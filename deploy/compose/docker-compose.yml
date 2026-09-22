@@ -1,0 +1,45 @@
+name: uai
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uai}
+      POSTGRES_DB: ${POSTGRES_DB:-uai}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uai}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: ["redis-server", "--save", ""]
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js"]
+    ports: ["4222:4222"]
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-uai-dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-uai-dev-secret}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+  opa:
+    image: openpolicyagent/opa:latest
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policy"]
+    volumes: ["../../policy:/policy:ro"]
+    ports: ["8181:8181"]
+
+volumes:
+  pgdata:
+  miniodata:

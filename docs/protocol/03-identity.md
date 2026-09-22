@@ -29,8 +29,11 @@ Properties:
   primary key and a natural partition key for `action_events`.
 - **Opaque** — carries no owner, vendor, jurisdiction or model information. All of that is in
   credentials, which can change; the identifier never does.
-- **Case-normalized** — MUST be emitted uppercase; verifiers MUST accept case-insensitively
-  and normalize before comparison.
+- **Case-normalized** — the ULID MUST be emitted uppercase, the scheme and entity class
+  lowercase. Verifiers MUST accept all three case-insensitively (URI scheme comparison is
+  case-insensitive per RFC 3986 §3.1) and normalize to canonical form before comparing.
+  Decoding additionally folds Crockford's ambiguous characters (`I`,`L`→`1`, `O`→`0`), so a
+  transcribed identifier resolves while each identifier keeps exactly one canonical spelling.
 
 > **Rejected alternative:** embedding the organization or country in the identifier. It leaks
 > data forever, breaks on reorganization, and creates a namespace authority. Rejected under P9.

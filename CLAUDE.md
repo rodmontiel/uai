@@ -26,4 +26,19 @@ fijado en `graphify-out/.graphify_python`.
 
 ## Estado
 
-Scaffolding inicial. La especificación funcional llega en el siguiente prompt del usuario.
+Spec v0.1 completo en `docs/protocol/` (26 secciones). Implementación por fases:
+
+- Fase 2 (parcial): `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` — con tests, sin dependencias externas.
+- Fase 3: schema PostgreSQL (`db/migrations/`) + invariantes ejecutables (`test/invariants/`).
+
+## Reglas del proyecto
+
+1. **Prioridad en cada trade-off:** security > auditability > interoperability > simplicity >
+   performance > visual polish.
+2. **Nunca prometer un kill switch global.** Revocación = los participantes dejan de honrar la
+   credencial. Si un texto de UI, una respuesta de API o un doc implica otra cosa, es un bug.
+3. **`pkg/` no toma dependencias externas** sin justificación explícita: está en el camino de
+   verificación y cada dependencia ahí es superficie de supply-chain (amenaza T-07).
+4. **Cada invariante INV-001..010 necesita un test negativo** que pruebe que la operación
+   prohibida falla. No alcanza con documentarla.
+5. **Nada de contenido en la blockchain ni en el log**: solo commitments salteados.
