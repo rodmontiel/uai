@@ -280,3 +280,134 @@ func hashForAlg(alg Algorithm, in []byte) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("%w: %q", ErrUnsupportedAlgorithm, alg)
 	}
 }
+
+// --- RFC 9421 HTTP message signatures ---------------------------------------
+//
+// These two functions are the ONLY place in UAI where a signature is produced
+// or verified without the DOMAIN || 0x00 prefix, and the exception is
+// deliberate: an RFC 9421 signature base already carries the domain inside the
+// signed bytes, as the `tag` parameter of @signature-params. Prefixing it again
+// would add no security property and would break interoperability with standard
+// RFC 9421 verifiers.
+//
+// The caller MUST still check the tag against the expected domain. pkg/pop does
+// that; nothing else should call these functions.
+
+// rawSigner is unexported on purpose. Domain-less signing is available only to
+// the signers defined in this package, so an external implementation of Signer
+// cannot be used to bypass domain separation.
+type rawSigner interface {
+	signRaw(message []byte) ([]byte, error)
+}
+
+func (s *ed25519Signer) signRaw(message []byte) ([]byte, error) {
+	return ed25519.Sign(s.key, message), nil
+}
+
+func (s *ecdsaSigner) signRaw(message []byte) ([]byte, error) {
+	digest, size, err := hashForAlg(s.alg, message)
+	if err != nil {
+		return nil, err
+	}
+	r, sv, err := ecdsa.Sign(rand.Reader, s.key, digest)
+	if err != nil {
+		return nil, fmt.Errorf("uaicrypto: ecdsa sign: %w", err)
+	}
+	out := make([]byte, 2*size)
+	r.FillBytes(out[:size])
+	sv.FillBytes(out[size:])
+	return out, nil
+}
+
+// HTTPSignatureAlg maps a UAI algorithm to its RFC 9421 registry name.
+func HTTPSignatureAlg(alg Algorithm) (string, error) {
+	switch alg {
+	case AlgEdDSA:
+		return "ed25519", nil
+	case AlgES256:
+		return "ecdsa-p256-sha256", nil
+	case AlgES384:
+		return "ecdsa-p384-sha384", nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedAlgorithm, alg)
+	}
+}
+
+// AlgorithmFromHTTP maps an RFC 9421 registry name back to a UAI algorithm.
+func AlgorithmFromHTTP(name string) (Algorithm, error) {
+	switch name {
+	case "ed25519":
+		return AlgEdDSA, nil
+	case "ecdsa-p256-sha256":
+		return AlgES256, nil
+	case "ecdsa-p384-sha384":
+		return AlgES384, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedAlgorithm, name)
+	}
+}
+
+// SignHTTPSignatureBase signs an RFC 9421 signature base. See the note above:
+// the domain lives inside the base, not in a prefix.
+func SignHTTPSignatureBase(s Signer, base []byte) (httpAlg string, sig []byte, err error) {
+	raw, ok := s.(rawSigner)
+	if !ok {
+		return "", nil, errors.New("uaicrypto: signer does not support HTTP message signatures")
+	}
+	httpAlg, err = HTTPSignatureAlg(s.Algorithm())
+	if err != nil {
+		return "", nil, err
+	}
+	sig, err = raw.signRaw(base)
+	if err != nil {
+		return "", nil, err
+	}
+	return httpAlg, sig, nil
+}
+
+// VerifyHTTPSignatureBase verifies an RFC 9421 signature base.
+func VerifyHTTPSignatureBase(pub crypto.PublicKey, httpAlg string, base, sig []byte) error {
+	alg, err := AlgorithmFromHTTP(httpAlg)
+	if err != nil {
+		return err
+	}
+	switch alg {
+	case AlgEdDSA:
+		key, ok := pub.(ed25519.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: want ed25519.PublicKey, got %T", ErrKeyMismatch, pub)
+		}
+		if len(sig) != ed25519.SignatureSize || !ed25519.Verify(key, base, sig) {
+			return ErrBadSignature
+		}
+		return nil
+	case AlgES256, AlgES384:
+		key, ok := pub.(*ecdsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: want *ecdsa.PublicKey, got %T", ErrKeyMismatch, pub)
+		}
+		curve, err := curveForAlg(alg)
+		if err != nil {
+			return err
+		}
+		if key.Curve != curve {
+			return fmt.Errorf("%w: key is on %s, %s requires %s",
+				ErrKeyMismatch, key.Curve.Params().Name, httpAlg, curve.Params().Name)
+		}
+		digest, size, err := hashForAlg(alg, base)
+		if err != nil {
+			return err
+		}
+		if len(sig) != 2*size {
+			return fmt.Errorf("%w: signature is %d bytes, want %d", ErrBadSignature, len(sig), 2*size)
+		}
+		r := new(big.Int).SetBytes(sig[:size])
+		sv := new(big.Int).SetBytes(sig[size:])
+		if !ecdsa.Verify(key, digest, r, sv) {
+			return ErrBadSignature
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: %q", ErrUnsupportedAlgorithm, alg)
+	}
+}

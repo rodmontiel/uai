@@ -26,10 +26,19 @@ fijado en `graphify-out/.graphify_python`.
 
 ## Estado
 
-Spec v0.1 completo en `docs/protocol/` (26 secciones). Implementación por fases:
+Spec v0.1 completo en `docs/protocol/` (26 secciones). El numerado de fases sigue
+`docs/protocol/19-roadmap.md` al pie de la letra: una fase es ✅ solo cuando su entregable
+declarado existe en el repo.
 
-- Fase 2 (parcial): `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` — con tests, sin dependencias externas.
-- Fase 3: schema PostgreSQL (`db/migrations/`) + invariantes ejecutables (`test/invariants/`).
+- **Fase 2 ✅** — 10 JSON Schemas con 40 ejemplos, 3 contextos JSON-LD, OpenAPI 3.1 (21 paths),
+  9 sets de vectores normativos y `tools/uai-conformance` (125 chequeos).
+- **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + 35 invariantes ejecutables
+  (`test/invariants/invariants.sql`).
+- **Fase 5 🟡** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`. Faltan proof-of-possession,
+  transparency receipts y rotación de claves.
+- Fases 4, 6–12: sin empezar.
+
+`make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 
 ## Reglas del proyecto
 
@@ -42,3 +51,9 @@ Spec v0.1 completo en `docs/protocol/` (26 secciones). Implementación por fases
 4. **Cada invariante INV-001..010 necesita un test negativo** que pruebe que la operación
    prohibida falla. No alcanza con documentarla.
 5. **Nada de contenido en la blockchain ni en el log**: solo commitments salteados.
+6. **Los vectores de `spec/test-vectors/` se leen, no se regeneran en los tests.** Un test que
+   escribe sus propias expectativas solo prueba que el código se cree a sí mismo. Regenerarlos
+   (`make vectors`) debe ser un no-op: un diff significa que cambió el protocolo.
+7. **Todo schema necesita ejemplos inválidos.** Un schema que nunca rechaza nada no valida nada.
+8. **No afirmar en presente lo que todavía no existe.** Ya pasó dos veces (el compose de §23.4 y
+   los test vectors de §7.9). Si un doc describe algo no implementado, decir en qué fase entra.

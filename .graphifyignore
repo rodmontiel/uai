@@ -1,0 +1,16 @@
+# Generated artifacts. They are the protocol's contract, not its knowledge:
+# every file here is produced deterministically by tools/uai-vectors or by the
+# example generator, and indexing them floods the graph with JSON structure
+# ("properties", "type", "required") that drowns the concepts the graph exists
+# to surface.
+#
+# The schema definitions are excluded too. Parsed as JSON they contribute their
+# structure -- "$ref", "type", "enum", "properties" -- as graph nodes, which
+# produced seven ~20-node communities of pure vocabulary. The protocol semantics
+# they carry already live in docs/protocol/ and in the OpenAPI surface, both of
+# which are indexed semantically.
+spec/test-vectors/
+spec/schemas/
+
+# Backups graphify itself writes.
+graphify-out/
