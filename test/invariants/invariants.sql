@@ -11,12 +11,15 @@ BEGIN;
 
 -- ── fixtures ────────────────────────────────────────────────────────────────
 
+-- ON CONFLICT so this file runs against both an empty database and one that
+-- already carries the development seed.
 INSERT INTO jurisdictions (code, name, source_bundle) VALUES
     ('AR', 'Argentina', 'GASC-2027.4'),
     ('DE', 'Germany',   'GASC-2027.4'),
     ('JP', 'Japan',     'GASC-2027.4'),
     ('CA', 'Canada',    'GASC-2027.4'),
-    ('IN', 'India',     'GASC-2027.4');
+    ('IN', 'India',     'GASC-2027.4')
+ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO organizations (id, did, legal_name, jurisdiction)
 VALUES ('org-acme', 'did:web:acme-robotics.example', 'ACME Robotics', 'AR');

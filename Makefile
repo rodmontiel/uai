@@ -16,7 +16,7 @@ help: ## Show this help
 
 ## ---------- environment ----------
 .PHONY: dev
-dev: up migrate ## Bring up the local stack and apply the schema
+dev: up migrate seed ## Bring up the local stack, apply the schema and seed it
 
 .PHONY: up
 up: ## Start infrastructure containers
@@ -37,6 +37,10 @@ nuke: ## Stop containers and delete volumes
 .PHONY: migrate
 migrate: ## Apply database migrations
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations up
+
+.PHONY: seed
+seed: ## Load development bootstrap data (jurisdictions)
+	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/seed up
 
 .PHONY: migrate-down
 migrate-down: ## Roll back the most recent migration
@@ -69,6 +73,22 @@ vectors-check: ## Fail if regenerating the vectors would change them
 		exit 1; \
 	fi
 	@echo "vectors are reproducible"
+
+.PHONY: integration
+integration: ## Run store integration tests against a throwaway PostgreSQL
+	@docker rm -f uai-pg-test >/dev/null 2>&1 || true
+	@docker run -d --name uai-pg-test -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
+		-e POSTGRES_DB=uai -p 55433:5432 postgres:16-alpine >/dev/null
+	@for i in $$(seq 1 40); do \
+		docker exec uai-pg-test pg_isready -U uai >/dev/null 2>&1 && break; sleep 1; done
+	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0001_init.up.sql
+	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0002_governance.up.sql
+	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/seed/0001_jurisdictions.up.sql
+	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
+		$(GO) test ./internal/store/... -count=1 -race
+	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
+		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
+	@docker rm -f uai-pg-test >/dev/null
 
 .PHONY: invariants
 invariants: ## Assert that the forbidden operations fail (INV-001..010)

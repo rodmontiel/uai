@@ -18,7 +18,7 @@ uai/
 │   ├── openapi/               # OpenAPI 3.1 definition
 │   └── test-vectors/          # conformance vectors (normative)
 ├── proto/                     # protobuf for internal gRPC
-├── pkg/                       # shared Go libraries
+├── pkg/                       # protocol core — NO external dependencies (see 25.2.1)
 │   ├── uaiid/                 # ULID, UAI-ID, DID parsing
 │   ├── uaicrypto/             # UAI-CS-1: signing, canonicalization, commitments
 │   ├── uaivc/                 # verifiable credentials
@@ -27,7 +27,14 @@ uai/
 │   ├── policy/                # OPA embedding, bundle verification
 │   ├── ledger/                # contract bindings, anchor adapters
 │   ├── spiffe/                # SVID helpers
-│   ├── store/                 # repositories (sqlc-generated)
+│   ├── pop/                   # RFC 9421 proof of possession
+│   ├── keys/                  # key history, rotation, validity at event time
+│   └── receipt/               # checkpoints, transparency receipts, witnesses
+├── internal/                  # server implementation — may take dependencies
+│   ├── store/                 # PostgreSQL repositories
+│   ├── api/                   # HTTP plumbing: problem+json, idempotency, PoP middleware
+│   ├── conformance/           # the vector runner
+│   ├── schemas/  openapi/     # spec checkers
 │   └── obs/                   # OpenTelemetry, logging with redaction
 ├── services/                  # one directory per service, each with main.go
 │   ├── gateway/ identity/ registry/ credential/ passport/ action/
@@ -63,7 +70,7 @@ uai/
 
 | Area | Convention |
 |---|---|
-| Go | Standard layout, `internal/` inside each service for non-shared code, `pkg/` only for genuinely shared libraries |
+| Go | `pkg/` is the protocol core and takes no external dependencies; `internal/` is the server implementation and may. See 25.2.1 |
 | Errors | Typed errors mapping 1:1 to the `UAI_*` API codes; no string matching |
 | Config | Environment variables with a typed loader; `.env.example` committed, `.env` never |
 | Migrations | Forward-only in production, reviewed against INV-003/006 |
@@ -71,6 +78,26 @@ uai/
 | Frontend | App Router, server components by default, WCAG 2.2 AA, status never conveyed by color alone (§45 of the brief) |
 | Commits | Conventional commits; one commit per milestone (§56 of the brief) |
 | Tests | Co-located unit tests; `test/` for cross-service integration, e2e and invariants |
+
+### 25.2.1 The `pkg/` vs `internal/` boundary
+
+`pkg/` is what a relying party runs to decide whether evidence is genuine: identifiers,
+canonical bytes, signatures, Merkle proofs, proof of possession, key validity, receipts. It
+takes **no external dependencies**, for two reasons that are not style preferences:
+
+1. Every dependency on the verification path is supply-chain attack surface (threat T-07). An
+   attacker who compromises a transitive library of the verifier does not need to forge
+   anything — they change what "valid" means.
+2. An auditor should be able to read the whole verification core without following a dependency
+   tree, and a reimplementation in another language should have nothing to port but the spec.
+
+`internal/` is the server: databases, HTTP, policy engines, schema validators. It may take
+whatever dependencies it needs, because a compromised server is a failure UAI already models —
+the log, the witnesses and the ledger exist precisely so that a lying server is detectable.
+
+The rule is enforced by `test/deps`, not by discipline: a test runs `go list -deps` over `pkg/`
+and fails on anything outside the standard library. That test itself once failed silently
+because of a relative package pattern, so it also asserts that it actually inspected something.
 
 ## 25.3 Why a single Go module
 
