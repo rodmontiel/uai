@@ -51,16 +51,20 @@ when its own stated deliverable exists in this repository.
 | Phase | Status | What |
 |---|---|---|
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
-| 2 Protocol | ✅ | 10 JSON Schemas with 40 examples, 3 JSON-LD contexts, OpenAPI 3.1 (21 paths), 9 published vector sets, `uai-conformance` |
+| 2 Protocol | ✅ | 10 JSON Schemas with 40 examples, 3 JSON-LD contexts, OpenAPI 3.1 (21 paths), 10 published vector sets, `uai-conformance` |
 | 3 Data | ✅ | PostgreSQL schema, 34 tables, integrity guards, 35 executable invariant assertions |
 | 4 Backend core | ⬜ | identity, registry, credential, action services |
-| 5 Cryptography | 🟡 **partial** | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` implemented and tested. Proof of possession, transparency receipts and key rotation pending |
+| 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` (checkpoints, receipts, witness co-signing) |
 | 6–12 | ⬜ | Policy engine, contracts, frontend, SDKs, demo, security, deployment |
 
 Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
-anything else could be built. Phase 2 has since closed that gap: the crypto core is now checked
+anything else could be built. Phase 2 has since closed that gap: the crypto core is checked
 against **committed vectors**, and an implementation in any language can be verified against the
 same files without running this code.
+
+The verification core is deliberately dependency-free — it is what a relying party runs to decide
+whether evidence is genuine, and every dependency there is supply-chain surface. A test enforces
+that rule rather than leaving it to discipline.
 
 ```bash
 make conformance     # 125 checks: vectors, schemas, OpenAPI

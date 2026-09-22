@@ -16,12 +16,15 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/rodmontiel/uai/internal/testvectors"
 	"github.com/rodmontiel/uai/pkg/merkle"
+	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
 )
@@ -60,9 +63,12 @@ func (r Result) OK() bool { return r.LoadError == nil && len(r.Failures()) == 0 
 func All() []Result {
 	return []Result{
 		JCS(), Digest(), Commitment(), MerkleHashing(), MerkleProofs(),
-		Ed25519(), ECDSA(), Identifiers(), EventChain(),
+		Ed25519(), ECDSA(), Identifiers(), EventChain(), PoP(),
 	}
 }
+
+// PoPSets runs the sets that pkg/pop is responsible for.
+func PoPSets() []Result { return []Result{PoP()} }
 
 // CryptoSets runs the sets that pkg/uaicrypto is responsible for.
 func CryptoSets() []Result {
@@ -460,6 +466,89 @@ func EventChain() Result {
 	} else {
 		r.Cases = append(r.Cases, fail("fork is detectable",
 			"expected exactly one forked predecessor, found %d — without a fork the vectors cannot demonstrate clone detection", forks))
+	}
+	return r
+}
+
+// PoP checks RFC 9421 signature base construction and HTTP message signatures.
+//
+// The base is compared as an exact string. That is the point of this set: two
+// implementations that agree on the crypto but disagree on a newline cannot
+// verify each other, and the disagreement is invisible until it matters.
+func PoP() Result {
+	const file = "pop/rfc9421.json"
+	r := Result{Set: "uai-cs-1/pop-rfc9421", File: file}
+	set, err := testvectors.Load[testvectors.PoPCase](file)
+	if err != nil {
+		r.LoadError = err
+		return r
+	}
+	r.Description = set.Description
+
+	for _, c := range set.Cases {
+		req, err := http.NewRequest(c.Method, c.TargetURI, nil)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "build request: %v", err))
+			continue
+		}
+		for k, v := range c.Headers {
+			req.Header.Set(k, v)
+		}
+
+		// The verifier sees the tag as presented, which for the cross-domain
+		// case is not the tag that was signed.
+		verifyTag := c.VerifyTag
+		if verifyTag == "" {
+			verifyTag = c.Tag
+		}
+		params := pop.Params{
+			Components: c.Components, Created: c.Created,
+			KeyID: c.KeyID, Alg: c.Alg, Tag: verifyTag,
+		}
+		base, err := pop.SignatureBase(pop.FromRequest(req, "https"), params)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "signature base: %v", err))
+			continue
+		}
+
+		// An untampered case must reproduce the committed base exactly.
+		untampered := verifyTag == c.Tag && c.TargetURI != "" && c.MustVerify
+		if untampered && string(base) != c.SignatureBase {
+			r.Cases = append(r.Cases, fail(c.Name,
+				"signature base differs\n  got:\n%s\n  want:\n%s", base, c.SignatureBase))
+			continue
+		}
+
+		digestErr := pop.VerifyContentDigest(c.ContentDigest, []byte(c.BodyUTF8))
+		pubBytes, err := hex.DecodeString(c.PublicKeyHex)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "public key: %v", err))
+			continue
+		}
+		sig, err := base64.StdEncoding.DecodeString(c.SignatureB64)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "signature: %v", err))
+			continue
+		}
+		sigErr := uaicrypto.VerifyHTTPSignatureBase(ed25519.PublicKey(pubBytes), c.Alg, base, sig)
+
+		accepted := digestErr == nil && sigErr == nil
+		switch {
+		case c.MustVerify && !accepted:
+			detail := "expected the request to be accepted"
+			if digestErr != nil {
+				detail += "; digest: " + digestErr.Error()
+			}
+			if sigErr != nil {
+				detail += "; signature: " + sigErr.Error()
+			}
+			r.Cases = append(r.Cases, fail(c.Name, "%s", detail))
+		case !c.MustVerify && accepted:
+			r.Cases = append(r.Cases, fail(c.Name,
+				"expected the request to be REJECTED (%s) but it was accepted", c.FailureReason))
+		default:
+			r.Cases = append(r.Cases, pass(c.Name))
+		}
 	}
 	return r
 }

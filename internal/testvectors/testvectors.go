@@ -122,6 +122,34 @@ type IdentifierCase struct {
 	RejectReason   string `json:"reject_reason,omitempty"`
 }
 
+// PoPCase covers RFC 9421 HTTP message signatures: signature base
+// construction, the Signature-Input field, and the signature itself.
+//
+// The signature base is pinned as an exact string because it is where
+// implementations diverge: a stray newline, an unquoted component name or a
+// lowercased method all produce a base that verifies against nothing.
+type PoPCase struct {
+	Name           string            `json:"name"`
+	Method         string            `json:"method"`
+	TargetURI      string            `json:"target_uri"`
+	Headers        map[string]string `json:"headers"`
+	BodyUTF8       string            `json:"body_utf8"`
+	Components     []string          `json:"components"`
+	Created        int64             `json:"created"`
+	KeyID          string            `json:"keyid"`
+	Alg            string            `json:"alg"`
+	Tag            string            `json:"tag"`
+	SignatureInput string            `json:"signature_input"`
+	SignatureBase  string            `json:"signature_base"`
+	ContentDigest  string            `json:"content_digest"`
+	SeedHex        string            `json:"seed_hex,omitempty"`
+	PublicKeyHex   string            `json:"public_key_hex,omitempty"`
+	SignatureB64   string            `json:"signature_b64,omitempty"`
+	VerifyTag      string            `json:"verify_tag,omitempty"`
+	MustVerify     bool              `json:"must_verify"`
+	FailureReason  string            `json:"failure_reason,omitempty"`
+}
+
 // ChainCase covers the per-agent attestation hash chain, including the fork
 // that a cloned agent or stolen key produces.
 type ChainCase struct {

@@ -34,9 +34,10 @@ declarado existe en el repo.
   9 sets de vectores normativos y `tools/uai-conformance` (125 chequeos).
 - **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + 35 invariantes ejecutables
   (`test/invariants/invariants.sql`).
-- **Fase 5 🟡** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`. Faltan proof-of-possession,
-  transparency receipts y rotación de claves.
-- Fases 4, 6–12: sin empezar.
+- **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
+  `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
+  (checkpoints, receipts, co-firma de witnesses).
+- Fases 4, 6–12: sin empezar. La 4 (servicios backend) es la siguiente.
 
 `make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 

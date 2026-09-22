@@ -235,14 +235,19 @@ vectors exist to close. Regeneration is deterministic, so a diff means the proto
 | ECDSA signatures | `signature/ecdsa.json` | P-256 and P-384 verification with fixed-width R‖S, plus cross-domain failure |
 | Identifiers | `identifier/uai-id.json` | UAI-ID/DID parsing, canonicalization, Crockford folding, and 8 inputs that MUST be rejected |
 | Event chain | `attestation/event-chain.json` | Chain linkage and a **fork**: two events claiming the same predecessor |
+| HTTP message signatures | `pop/rfc9421.json` | Exact signature base strings, `Signature-Input` serialization, and cases that MUST be rejected: cross-domain tag, swapped target URI, tampered body |
 
 Every set contains negative cases. An implementation that passes only the positive vectors has
 not demonstrated domain separation, rejection of malformed identifiers, or fork detection — and
 those are the properties the protocol actually rests on.
 
-> **Not yet published:** `pop/rfc9421-*.http` (HTTP message signature base construction) and
-> `webauthn/vote-*.json` (vote digest to WebAuthn challenge binding). Both describe behavior
-> that arrives with Phase 5 and the voting service respectively; publishing vectors for
+The RFC 9421 set pins the **signature base as an exact string**. That is deliberate: two
+implementations can agree on every cryptographic primitive and still fail to verify each other
+because one emits a trailing newline or leaves a component name unquoted, and the disagreement
+stays invisible until it matters.
+
+> **Not yet published:** `webauthn/vote-*.json` (vote digest to WebAuthn challenge binding).
+> It describes behavior that arrives with the voting service; publishing vectors for
 > unimplemented behavior would be the same overclaim this section exists to avoid.
 
 An implementation that reproduces every published vector byte-for-byte is `UAI-CS-1` conformant.

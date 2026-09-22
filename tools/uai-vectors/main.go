@@ -15,17 +15,20 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/rodmontiel/uai/internal/testvectors"
 	"github.com/rodmontiel/uai/pkg/merkle"
+	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
 )
@@ -80,6 +83,7 @@ func main() {
 		{"signature/ecdsa.json", ecdsaVectors},
 		{"identifier/uai-id.json", identifierVectors},
 		{"attestation/event-chain.json", chainVectors},
+		{"pop/rfc9421.json", popVectors},
 	}
 
 	for _, w := range writers {
@@ -629,6 +633,116 @@ func chainVectors() (any, error) {
 		IsFork:   true,
 		ForkNote: "A conformant implementation MUST detect that two distinct events reference the same previous_event_hash and MUST NOT silently accept the second. A fork has no benign cause.",
 	})
+	return set, nil
+}
+
+func popVectors() (any, error) {
+	set := testvectors.Set[testvectors.PoPCase]{
+		VectorSet:   "uai-cs-1/pop-rfc9421",
+		UAIVersion:  "0.1",
+		Description: "RFC 9421 HTTP message signatures. The signature base is pinned as an exact string because that is where implementations diverge: a stray newline, an unquoted component name or a lowercased method all yield a base that verifies against nothing. Domain separation is carried by the `tag` parameter inside the base, not by a UAI prefix, so a standard RFC 9421 verifier interoperates.",
+		Reference:   "docs/protocol/04-cryptography.md#761-http-message-signatures-rfc-9421--default-for-the-rest-api",
+	}
+
+	seed := sha256.Sum256([]byte("UAI conformance vector seed / pop-ed25519 / v0.1"))
+	priv := ed25519.NewKeyFromSeed(seed[:])
+	pub := priv.Public().(ed25519.PublicKey)
+	const kid = "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1"
+	signer := uaicrypto.NewEd25519Signer(priv, kid)
+
+	build := func(name, method, target, body, tag string, created int64) (testvectors.PoPCase, []byte, error) {
+		req, err := http.NewRequest(method, target, nil)
+		if err != nil {
+			return testvectors.PoPCase{}, nil, err
+		}
+		digest := pop.ContentDigest([]byte(body))
+		headers := map[string]string{
+			"Content-Digest": digest,
+			"UAI-Agent-Id":   "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+			"UAI-Nonce":      "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		p := pop.Params{
+			Components: pop.DefaultComponents,
+			Created:    created,
+			KeyID:      kid,
+			Alg:        "ed25519",
+			Tag:        tag,
+		}
+		base, err := pop.SignatureBase(pop.FromRequest(req, "https"), p)
+		if err != nil {
+			return testvectors.PoPCase{}, nil, err
+		}
+		return testvectors.PoPCase{
+			Name: name, Method: method, TargetURI: target, Headers: headers, BodyUTF8: body,
+			Components: p.Components, Created: created, KeyID: kid, Alg: "ed25519", Tag: tag,
+			SignatureInput: pop.Label + "=" + p.Serialize(),
+			SignatureBase:  string(base),
+			ContentDigest:  digest,
+			SeedHex:        hex.EncodeToString(seed[:]),
+			PublicKeyHex:   hex.EncodeToString(pub),
+		}, base, nil
+	}
+
+	attest, base, err := build("attestation submission", "POST",
+		"https://api.uai.world/v1/actions/attest",
+		`{"event_id":"01JY8RA3C7K2V9M0QW4T6Z8XPD"}`,
+		string(uaicrypto.DomainAttestation), 1790000524)
+	if err != nil {
+		return nil, err
+	}
+	_, sig, err := uaicrypto.SignHTTPSignatureBase(signer, base)
+	if err != nil {
+		return nil, err
+	}
+	attest.SignatureB64 = base64.StdEncoding.EncodeToString(sig)
+	attest.VerifyTag = attest.Tag
+	attest.MustVerify = true
+	set.Cases = append(set.Cases, attest)
+
+	vote, voteBase, err := build("vote submission", "POST",
+		"https://api.uai.world/v1/governance/cases/UAI-INC-000041/vote",
+		`{"vote":"YES"}`, string(uaicrypto.DomainVote), 1790000600)
+	if err != nil {
+		return nil, err
+	}
+	_, voteSig, err := uaicrypto.SignHTTPSignatureBase(signer, voteBase)
+	if err != nil {
+		return nil, err
+	}
+	vote.SignatureB64 = base64.StdEncoding.EncodeToString(voteSig)
+	vote.VerifyTag = vote.Tag
+	vote.MustVerify = true
+	set.Cases = append(set.Cases, vote)
+
+	// Negative: the vote signature presented at the attestation endpoint. The
+	// tag is inside the signed base, so relabelling the header does not help.
+	crossDomain := vote
+	crossDomain.Name = "vote signature MUST NOT verify under the attestation tag"
+	crossDomain.VerifyTag = string(uaicrypto.DomainAttestation)
+	crossDomain.MustVerify = false
+	crossDomain.FailureReason = "the tag is a signed component: changing it in the header invalidates the signature"
+	set.Cases = append(set.Cases, crossDomain)
+
+	// Negative: same signature, different target. A captured call to one
+	// endpoint must not authorize another.
+	swapped := attest
+	swapped.Name = "signature MUST NOT verify against a different target URI"
+	swapped.TargetURI = "https://api.uai.world/v1/revocations/01JY8RF60000000000000000ZZ/execute"
+	swapped.MustVerify = false
+	swapped.FailureReason = "@target-uri is a covered component"
+	set.Cases = append(set.Cases, swapped)
+
+	// Negative: the body was swapped after signing.
+	tampered := attest
+	tampered.Name = "tampered body MUST NOT verify"
+	tampered.BodyUTF8 = `{"event_id":"01JY8RA3C7K2V9M0QW4T6Z8XPDX"}`
+	tampered.MustVerify = false
+	tampered.FailureReason = "content-digest is covered, so the body cannot be swapped after signing"
+	set.Cases = append(set.Cases, tampered)
+
 	return set, nil
 }
 
