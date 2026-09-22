@@ -1,0 +1,136 @@
+{
+  "vector_set": "uai-id/parsing",
+  "uai_version": "0.1",
+  "description": "UAI-ID and DID parsing. A UAI-ID and its DID are the same identifier with and without the scheme prefix. Input is accepted case-insensitively and with Crockford's ambiguous characters folded; output is always canonical.",
+  "reference": "docs/protocol/03-identity.md#61-the-uai-id",
+  "cases": [
+    {
+      "name": "canonical agent identifier",
+      "input": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "canonical_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "entity": "agent",
+      "timestamp_ms": 1750493101391
+    },
+    {
+      "name": "DID spelling of the same identifier",
+      "input": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "canonical_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "entity": "agent",
+      "timestamp_ms": 1750493101391
+    },
+    {
+      "name": "uppercase scheme and entity",
+      "input": "UAI:AGENT:01JY8R9ZAF392N7QX2T81JH6KM",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "canonical_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "entity": "agent",
+      "timestamp_ms": 1750493101391
+    },
+    {
+      "name": "lowercase ULID",
+      "input": "uai:agent:01jy8r9zaf392n7qx2t81jh6km",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "canonical_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "entity": "agent",
+      "timestamp_ms": 1750493101391
+    },
+    {
+      "name": "Crockford I folds to 1",
+      "input": "uai:agent:01JY8R9ZAF392N7QX2T8IJH6KM",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "canonical_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "entity": "agent",
+      "timestamp_ms": 1750493101391
+    },
+    {
+      "name": "owner entity",
+      "input": "uai:owner:01JY8R9ZB00000000000000000",
+      "valid": true,
+      "canonical_uai_id": "uai:owner:01JY8R9ZB00000000000000000",
+      "canonical_did": "did:uai:owner:01JY8R9ZB00000000000000000",
+      "entity": "owner",
+      "timestamp_ms": 1750493101408
+    },
+    {
+      "name": "delegate entity",
+      "input": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "valid": true,
+      "canonical_uai_id": "uai:delegate:01JY8R9ZD00000000000000000",
+      "canonical_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "entity": "delegate",
+      "timestamp_ms": 1750493101472
+    },
+    {
+      "name": "minimum ULID",
+      "input": "uai:agent:00000000000000000000000000",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:00000000000000000000000000",
+      "canonical_did": "did:uai:agent:00000000000000000000000000",
+      "entity": "agent"
+    },
+    {
+      "name": "maximum ULID",
+      "input": "uai:agent:7ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+      "valid": true,
+      "canonical_uai_id": "uai:agent:7ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+      "canonical_did": "did:uai:agent:7ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+      "entity": "agent",
+      "timestamp_ms": 281474976710655
+    },
+    {
+      "name": "missing scheme",
+      "input": "agent:01JY8R9ZAF392N7QX2T81JH6KM",
+      "valid": false,
+      "reject_reason": "no uai: or did:uai: prefix"
+    },
+    {
+      "name": "different DID method",
+      "input": "did:web:example.com",
+      "valid": false,
+      "reject_reason": "not the uai DID method"
+    },
+    {
+      "name": "unknown entity class",
+      "input": "uai:robot:01JY8R9ZAF392N7QX2T81JH6KM",
+      "valid": false,
+      "reject_reason": "entity must be agent, owner, org, delegate or country"
+    },
+    {
+      "name": "ULID too short",
+      "input": "uai:agent:01JY8R9ZAF392N7QX2T81JH6K",
+      "valid": false,
+      "reject_reason": "ULID must be 26 characters"
+    },
+    {
+      "name": "ULID too long",
+      "input": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KMM",
+      "valid": false,
+      "reject_reason": "ULID must be 26 characters"
+    },
+    {
+      "name": "character outside the Crockford alphabet",
+      "input": "uai:agent:01JY8R9ZAF392N7QX2T81JH6K!",
+      "valid": false,
+      "reject_reason": "invalid character"
+    },
+    {
+      "name": "ULID overflows 128 bits",
+      "input": "uai:agent:8ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+      "valid": false,
+      "reject_reason": "first character encodes only 2 bits"
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "valid": false,
+      "reject_reason": "empty input"
+    }
+  ]
+}

@@ -1,0 +1,764 @@
+openapi: 3.1.0
+info:
+  title: Universal Agent Identity API
+  version: "0.1.0"
+  summary: Identity, attestation and governance for autonomous AI agents.
+  description: |
+    The UAI v1 REST surface.
+
+    REST and JSON because a protocol meant to be implemented by everyone must be
+    implementable with `curl`. gRPC is used internally where call volume justifies it.
+
+    **Authentication.** Every state-changing call requires proof of possession: mutual TLS
+    with a SPIFFE X.509-SVID *and* an RFC 9421 HTTP message signature. mTLS proves the
+    runtime instance; the message signature proves the persistent identity. Either alone is
+    insufficient, because a stolen SVID has no persistent key and a stolen persistent key has
+    no attested runtime.
+
+    **What this API does not claim.** A verified identity is not a safe agent, and revocation
+    does not stop code from running outside the ecosystem. See
+    `docs/protocol/01-overview.md`.
+  license:
+    name: Apache-2.0 (implementation) / CC-BY-4.0 (specification)
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  contact:
+    name: UAI security
+    email: security@uai.world
+
+servers:
+  - url: https://api.uai.world/v1
+    description: Production API
+  - url: https://verify.uai.world/v1
+    description: Public verification endpoint (unauthenticated, cached)
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: identity
+    description: Registration and the binding lifecycle
+  - name: passport
+    description: Cross-jurisdictional authorization
+  - name: action
+    description: Policy evaluation and action attestation
+  - name: harm
+    description: Suspicions, cases and quarantine
+  - name: governance
+    description: Human voting and revocation
+  - name: verification
+    description: Public, unauthenticated verification
+
+security:
+  - mutualTLS: []
+    messageSignature: []
+
+paths:
+  /agents:
+    post:
+      tags: [identity]
+      operationId: registerAgent
+      summary: Begin agent registration
+      description: |
+        Returns challenges for BOTH the owner and the agent. Ownership is proven, not declared:
+        the two signatures must reference the same (agent, owner) pair, so nobody can claim
+        another party's agent and no owner can disown an agent retroactively.
+
+        UAI never generates an agent's private key. A registry that can generate your key can
+        impersonate you, which would void the entire attribution claim.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegistrationRequest' }
+      responses:
+        '202':
+          description: Registration opened; proofs required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationChallenge' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}/prove:
+    post:
+      tags: [identity]
+      operationId: submitRegistrationProof
+      summary: Submit an owner or agent proof of possession
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProofSubmission' }
+      responses:
+        '201':
+          description: Identity minted once both proofs are present
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisteredAgent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}:
+    get:
+      tags: [identity]
+      operationId: getAgent
+      summary: Universal Agent Identity Card
+      parameters: [{ $ref: '#/components/parameters/AgentId' }]
+      responses:
+        '200':
+          description: Identity card
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisteredAgent' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}/credentials:
+    get:
+      tags: [identity]
+      operationId: getAgentCredentials
+      summary: Credential set held by an agent
+      parameters: [{ $ref: '#/components/parameters/AgentId' }]
+      responses:
+        '200':
+          description: Credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credentials:
+                    type: array
+                    items: { type: object }
+
+  /agents/{id}/bind:
+    post:
+      tags: [identity]
+      operationId: bindAgent
+      summary: Bind a runtime instance to a persistent identity
+      description: |
+        The signature covers the challenge AND the SVID identifiers, which is what
+        cryptographically ties "who I am" to "where I am running". Either alone would be
+        forgeable by an attacker holding the other.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BindRequest' }
+      responses:
+        '200':
+          description: Bound
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindResult' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}/unbind:
+    post:
+      tags: [identity]
+      operationId: unbindAgent
+      summary: Leave UAI (self-service)
+      description: |
+        An agent may leave at any time without asking anyone. This is a security property as
+        much as a principle: a protocol you cannot leave is one operators refuse to adopt.
+        Unbinding is not deletion — every existing attestation stays verifiable forever.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UnbindRequest' }
+      responses:
+        '200':
+          description: Unbound; history retained
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindResult' }
+
+  /agents/{id}/rebind:
+    post:
+      tags: [identity]
+      operationId: rebindAgent
+      summary: Rejoin UAI with cryptographic continuity
+      description: |
+        The continuity proof MUST be produced by a key that was valid at the moment of
+        unbinding. Without that rule, "unbind, rotate key, rebind" would be a laundering path
+        for a stolen identity.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RebindRequest' }
+      responses:
+        '200':
+          description: Rebound
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}/events:
+    get:
+      tags: [action]
+      operationId: getAgentEvents
+      summary: The agent's event chain, with proofs
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        '200':
+          description: Chain page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActionAttestation' }
+                  next_cursor: { type: string }
+
+  /passports/request:
+    post:
+      tags: [passport]
+      operationId: requestPassport
+      summary: Request a cross-jurisdictional passport
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PassportRequest' }
+      responses:
+        '201':
+          description: Passport issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentPassportCredential' }
+        '202':
+          description: Held for human approval
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /passports/{id}:
+    get:
+      tags: [passport]
+      operationId: getPassport
+      summary: Fetch a passport credential
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^urn:uai:passport:[0-9A-HJKMNP-TV-Z]{26}$' }
+      responses:
+        '200':
+          description: Passport
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentPassportCredential' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /policy/evaluate:
+    post:
+      tags: [action]
+      operationId: evaluatePolicy
+      summary: Policy decision, BEFORE the action is executed
+      description: |
+        A decision taken after execution would be theater. Every decision is recorded,
+        including ALLOW: a guardrail that logs only denials cannot answer what was permitted
+        and why, which is the question that matters after an incident.
+
+        Fails closed for identity, capability and passport checks. If the policy service is
+        degraded it uses the last signed cached bundle and says so in the record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyEvaluationRequest' }
+      responses:
+        '200':
+          description: Decision record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyDecision' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /actions/attest:
+    post:
+      tags: [action]
+      operationId: attestAction
+      summary: Submit a signed action attestation, AFTER execution
+      description: |
+        Idempotent on `event_id`, so an offline buffer flush is safe to retry. An append whose
+        `previous_event_hash` is stale returns 409 with the current head; two successful
+        appends claiming the same predecessor are a fork, which has no benign cause.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActionAttestation' }
+      responses:
+        '201':
+          description: Attested and logged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttestationReceipt' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: Chain conflict; the caller should refetch the head and retry
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /actions/{eventId}:
+    get:
+      tags: [action]
+      operationId: getAction
+      summary: An attestation with its transparency receipt
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+      responses:
+        '200':
+          description: Attestation and proof
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttestationReceipt' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /suspicions:
+    post:
+      tags: [harm]
+      operationId: reportSuspicion
+      summary: File a harm suspicion
+      description: |
+        A suspicion is a claim that warrants examination, never a finding. The reporter is
+        always identified: accusation is a consequential act and must itself be attributable.
+        Rate-limited per reporter, and deduplicated so that one adversary cannot manufacture
+        corroboration from many identities.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HarmSuspicion' }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suspicion_id: { type: string }
+                  merged_into: { type: string }
+        '429': { $ref: '#/components/responses/Problem' }
+
+  /cases/{id}:
+    get:
+      tags: [harm]
+      operationId: getCase
+      summary: A harm case
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^UAI-INC-[0-9]{6}$' }
+      responses:
+        '200':
+          description: Case
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HarmCase' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /quarantines:
+    get:
+      tags: [harm]
+      operationId: listQuarantines
+      summary: Active quarantine orders
+      description: |
+        Quarantine is preventive, reversible and time-boxed. Responses must never be rendered
+        as a finding of fault.
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quarantines:
+                    type: array
+                    items: { $ref: '#/components/schemas/QuarantineOrder' }
+
+  /governance/cases/{id}/vote:
+    post:
+      tags: [governance]
+      operationId: castVote
+      summary: Cast a signed human vote
+      description: |
+        The WebAuthn challenge IS the digest of the vote statement, so the hardware assertion
+        covers the voted content and not merely the session. A compromised frontend cannot
+        alter a vote without invalidating the assertion.
+
+        No proxy voting, no automated voting: an assertion without user verification is
+        rejected.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^UAI-INC-[0-9]{6}$' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoteStatement' }
+      responses:
+        '201':
+          description: Vote recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vote_id: { type: string }
+                  tally: { type: object }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+      security:
+        - webAuthn: []
+
+  /revocations/{decisionId}/execute:
+    post:
+      tags: [governance]
+      operationId: executeRevocation
+      summary: Execute an already-authorized governance decision
+      description: |
+        The only write operation available to the Global Read-only Admin. The single input is
+        the decision id: the administrator cannot choose the agent, the reason, the votes or
+        any parameter, because every consequence is already fixed by the governance proof,
+        which the smart contract verifies against the registered delegate set.
+
+        A malicious administrator with full database access still cannot revoke an identity.
+        The UI reads EXECUTE GOVERNANCE DECISION, never DELETE AGENT.
+      parameters:
+        - name: decisionId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Executed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RevocationDecision' }
+        '403':
+          description: The governance proof did not verify, or the threshold was not met
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+      security:
+        - webAuthn: []
+
+  /verify/{uaiId}:
+    get:
+      tags: [verification]
+      operationId: verifyIdentity
+      summary: Universal verification (unauthenticated)
+      description: |
+        Always returns 200 with an explicit status, including for unknown identifiers. An
+        unknown identifier yields `UAI_UNVERIFIED`, which means only that no verifiable
+        identity was presented — never that the agent is malicious.
+
+        A caller that reads only this JSON is trusting UAI. A caller that follows `proof` is
+        not. The difference is documented rather than hidden.
+      security: []
+      parameters:
+        - name: uaiId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}$' }
+      responses:
+        '200':
+          description: Verification result
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResponse' }
+
+  /log/checkpoint:
+    get:
+      tags: [verification]
+      operationId: getCheckpoint
+      summary: Latest witnessed transparency checkpoint
+      security: []
+      responses:
+        '200':
+          description: Checkpoint
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log_origin: { type: string }
+                  size: { type: integer }
+                  root: { type: string }
+                  witness_signatures: { type: array, items: { type: object } }
+
+  /log/proof:
+    get:
+      tags: [verification]
+      operationId: getLogProof
+      summary: Inclusion or consistency proof
+      security: []
+      parameters:
+        - name: index
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: first
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Proof
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransparencyReceipt' }
+
+components:
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS
+      description: SPIFFE X.509-SVID. Proves the runtime instance.
+    messageSignature:
+      type: apiKey
+      in: header
+      name: Signature
+      description: |
+        RFC 9421 HTTP message signature over @method, @target-uri, content-digest,
+        uai-agent-id and uai-nonce, tagged with the UAI domain. Proves the persistent
+        identity. `agent_id` in a JSON body proves nothing.
+    webAuthn:
+      type: apiKey
+      in: header
+      name: X-UAI-Assertion
+      description: |
+        WebAuthn assertion from a hardware authenticator with user verification required.
+        For votes, the challenge is the digest of the vote statement itself.
+
+  parameters:
+    AgentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^uai:agent:[0-9A-HJKMNP-TV-Z]{26}$'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Required on every state-changing call. A replay with the same key and body returns the
+        original response; the same key with a different body returns 409.
+      schema: { type: string, minLength: 8, maxLength: 255 }
+
+  responses:
+    Problem:
+      description: RFC 9457 problem document
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: |
+        RFC 9457. Carries `decision_id` and `policy_version` whenever a policy was involved, so
+        a refusal is auditable and reproducible rather than an opaque denial.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string, examples: [UAI_IDENTITY_REVOKED, UAI_POP_REQUIRED, UAI_CHAIN_CONFLICT] }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        decision_id: { type: string }
+        policy_version: { type: string }
+        governance_proof: { type: string }
+        remediation: { type: string }
+        trace_id: { type: string }
+
+    RegistrationRequest:
+      type: object
+      required: [logical_name, agent_type, owner_did]
+      properties:
+        logical_name: { type: string }
+        version: { type: string }
+        agent_type: { type: string }
+        owner_did: { type: string }
+        org_did: { type: string }
+        vendor: { type: string }
+        model_family: { type: string }
+        model_pinned:
+          type: boolean
+          description: Identity survives a model swap; pinning is for agents whose assurance argument depends on a specific version.
+        framework: { type: string }
+        primary_jurisdiction: { type: string, pattern: '^[A-Z]{2}$' }
+        requested_capabilities: { type: array, items: { type: string } }
+
+    RegistrationChallenge:
+      type: object
+      required: [registration_id, challenge_owner, challenge_agent, expires_in]
+      properties:
+        registration_id: { type: string }
+        challenge_owner: { type: string }
+        challenge_agent: { type: string }
+        expires_in: { type: integer }
+
+    ProofSubmission:
+      type: object
+      required: [role, challenge, signature]
+      properties:
+        role: { enum: [owner, agent] }
+        challenge: { type: string }
+        public_jwk: { type: object }
+        signature: { type: object }
+
+    RegisteredAgent:
+      type: object
+      required: [uai_id, did, status]
+      properties:
+        uai_id: { type: string }
+        did: { type: string }
+        logical_name: { type: string }
+        status:
+          enum: [UNREGISTERED, REGISTERED, VERIFIED, ACTIVE, UNBOUND, QUARANTINED, REVOCATION_AUTHORIZED, REVOKED]
+        assurance_level: { enum: [UAI-AL0, UAI-AL1, UAI-AL2, UAI-AL3] }
+        identity_commitment: { type: string }
+        policy_version: { type: string }
+        transparency: { type: object }
+
+    BindRequest:
+      type: object
+      required: [challenge, svid_spiffe_id, svid_cert_hash, signature]
+      properties:
+        challenge: { type: string }
+        svid_spiffe_id: { type: string }
+        svid_cert_hash: { type: string }
+        image_digest: { type: string }
+        signature: { type: object }
+
+    UnbindRequest:
+      type: object
+      required: [challenge, signature]
+      properties:
+        challenge: { type: string }
+        reason: { type: string }
+        signature: { type: object }
+
+    RebindRequest:
+      type: object
+      required: [challenge, previous_event_hash, continuity_proof, signature]
+      properties:
+        challenge: { type: string }
+        previous_event_hash: { type: string }
+        unbound_at_log_index: { type: integer }
+        continuity_proof: { type: string }
+        signature: { type: object }
+
+    BindResult:
+      type: object
+      properties:
+        status: { type: string }
+        binding_id: { type: string }
+        receipt: { $ref: '#/components/schemas/TransparencyReceipt' }
+
+    PassportRequest:
+      type: object
+      required: [agent_did, jurisdictions, capabilities]
+      properties:
+        agent_did: { type: string }
+        jurisdictions: { type: array, items: { type: string } }
+        capabilities: { type: array, items: { type: string } }
+        justification: { type: string }
+
+    PolicyEvaluationRequest:
+      type: object
+      required: [agent_did, capability, purpose, jurisdiction]
+      properties:
+        agent_did: { type: string }
+        capability: { type: string }
+        purpose: { type: string }
+        resource: { type: string }
+        jurisdiction: { type: object }
+
+    AttestationReceipt:
+      type: object
+      required: [event_id]
+      properties:
+        event_id: { type: string }
+        attestation: { $ref: '#/components/schemas/ActionAttestation' }
+        receipt: { $ref: '#/components/schemas/TransparencyReceipt' }
+
+    HarmCase:
+      type: object
+      required: [id, agent_did, state]
+      properties:
+        id: { type: string }
+        agent_did: { type: string }
+        state:
+          enum: [OPEN, UNDER_REVIEW, EVIDENCE_COLLECTION, VOTING, CLEARED, SANCTIONED, REVOKED, CLOSED]
+        summary: { type: string }
+        evidence_digest: { type: string }
+        tally: { type: object }
+        threshold: { type: string }
+
+    ActionAttestation:
+      $ref: '../schemas/action-attestation.schema.json'
+    PolicyDecision:
+      $ref: '../schemas/policy-decision.schema.json'
+    TransparencyReceipt:
+      $ref: '../schemas/transparency-receipt.schema.json'
+    HarmSuspicion:
+      $ref: '../schemas/harm-suspicion.schema.json'
+    QuarantineOrder:
+      $ref: '../schemas/quarantine-order.schema.json'
+    VoteStatement:
+      $ref: '../schemas/vote-statement.schema.json'
+    RevocationDecision:
+      $ref: '../schemas/revocation-decision.schema.json'
+    AgentPassportCredential:
+      $ref: '../schemas/agent-passport-credential.schema.json'
+    VerifyResponse:
+      $ref: '../schemas/verify-response.schema.json'

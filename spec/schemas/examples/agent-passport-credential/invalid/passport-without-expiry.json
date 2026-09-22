@@ -1,0 +1,59 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://uai.world/ns/passport/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "AgentPassportCredential"
+  ],
+  "id": "urn:uai:passport:01JY8RB1Q4X7N2M8V0K3T5S9WE",
+  "issuer": "did:web:passport.uai.world",
+  "validFrom": "2026-09-22T00:00:00Z",
+  "credentialStatus": {
+    "type": "BitstringStatusListEntry",
+    "statusPurpose": "revocation",
+    "statusListIndex": "94212",
+    "statusListCredential": "https://status.uai.world/lists/passports/3"
+  },
+  "credentialSubject": {
+    "id": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+    "owner": "did:uai:owner:01JY8R9ZB00000000000000000",
+    "allowedJurisdictions": [
+      "AR",
+      "BR",
+      "DE",
+      "ES"
+    ],
+    "restrictedJurisdictions": [
+      "KP",
+      "IR"
+    ],
+    "authorizedCapabilities": [
+      {
+        "capability": "cloud.securitygroup.update",
+        "minAssurance": "UAI-AL3",
+        "constraints": {
+          "max_actions_per_hour": 20
+        }
+      },
+      {
+        "capability": "crm.customer.read",
+        "minAssurance": "UAI-AL2"
+      }
+    ],
+    "assuranceLevel": "UAI-AL3",
+    "policyVersion": "GASC-2027.4",
+    "policyBundleHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "state": "VALID"
+  },
+  "proof": {
+    "type": "DataIntegrityProof",
+    "cryptosuite": "ecdsa-jcs-2019",
+    "created": "2026-09-22T00:00:00Z",
+    "verificationMethod": "did:web:passport.uai.world#key-1",
+    "proofPurpose": "assertionMethod",
+    "domain": "UAI-v1:credential",
+    "proofValue": "zProofAbc"
+  }
+}

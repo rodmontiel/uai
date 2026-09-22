@@ -1,0 +1,85 @@
+{
+  "vector_set": "uai-cs-1/digest",
+  "uai_version": "0.1",
+  "description": "Domain-separated digests: SHA-256(DOMAIN || 0x00 || payload). The same payload in two domains MUST produce different digests; that difference is what stops a signature made in one context verifying in another.",
+  "reference": "docs/protocol/04-cryptography.md#72-canonicalization-and-domain-separation",
+  "cases": [
+    {
+      "name": "domain UAI-v1:attestation",
+      "domain": "UAI-v1:attestation",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6174746573746174696f6e007b2261223a317d",
+      "digest": "sha256:248ef9148d8902348ff055a70234f5dd10dbe9042ad01ea78c0531f229718a6a"
+    },
+    {
+      "name": "domain UAI-v1:credential",
+      "domain": "UAI-v1:credential",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a63726564656e7469616c007b2261223a317d",
+      "digest": "sha256:71b7ff38b320cb44acdeca94ebd20dd627e296c3e87b5511f9a5304b2454238d"
+    },
+    {
+      "name": "domain UAI-v1:did-document",
+      "domain": "UAI-v1:did-document",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6469642d646f63756d656e74007b2261223a317d",
+      "digest": "sha256:3073fd3ce6ba15ea5df04f3cffcee35bbea4702562bbfc2a9ae1611aeb160aaf"
+    },
+    {
+      "name": "domain UAI-v1:challenge",
+      "domain": "UAI-v1:challenge",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6368616c6c656e6765007b2261223a317d",
+      "digest": "sha256:cf53292f1cd876b9cfe0923ef3d8e4669ab865e5d1eaedb9f021db14d582d09e"
+    },
+    {
+      "name": "domain UAI-v1:vote",
+      "domain": "UAI-v1:vote",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a766f7465007b2261223a317d",
+      "digest": "sha256:6a1dc327eb0b5274d0cec0f751f409b7038875bca61e7f5a639cc6d14c89374d"
+    },
+    {
+      "name": "domain UAI-v1:decision",
+      "domain": "UAI-v1:decision",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6465636973696f6e007b2261223a317d",
+      "digest": "sha256:8b4b4db8d96116f31e652a25f5b10c8c78beec63528c0e98e7993a5b5c5f6370"
+    },
+    {
+      "name": "domain UAI-v1:quarantine",
+      "domain": "UAI-v1:quarantine",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a71756172616e74696e65007b2261223a317d",
+      "digest": "sha256:348493751186a1d3e710774a499e0177226b723aa22f76e40c5b0f016f96b2e8"
+    },
+    {
+      "name": "domain UAI-v1:revocation",
+      "domain": "UAI-v1:revocation",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a7265766f636174696f6e007b2261223a317d",
+      "digest": "sha256:1c8634c9eeb561c332d93821d8b81797c2ef43863f4c758f0a21c4013514b3d1"
+    },
+    {
+      "name": "domain UAI-v1:checkpoint",
+      "domain": "UAI-v1:checkpoint",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a636865636b706f696e74007b2261223a317d",
+      "digest": "sha256:791434d18616310379284d2ab2ae358c0614538bef2a5c91465499118d92fee4"
+    },
+    {
+      "name": "domain UAI-v1:commitment",
+      "domain": "UAI-v1:commitment",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a636f6d6d69746d656e74007b2261223a317d",
+      "digest": "sha256:abad88f9fa7e9ae77d43c05709ab993756150bebec938aeea4d6848b0d776ffb"
+    },
+    {
+      "name": "domain UAI-v1:audit",
+      "domain": "UAI-v1:audit",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6175646974007b2261223a317d",
+      "digest": "sha256:340671037620eada130fdf91a74900360927fb3486d7b59cef7cfb8d8529f003"
+    }
+  ]
+}

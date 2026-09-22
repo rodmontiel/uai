@@ -1,0 +1,5 @@
+{
+  "automated-vote-without-user-verification": "INV-005: an assertion without user verification is not a vote. No automated process can produce a user-verified assertion from a hardware authenticator.",
+  "vote-without-evidence-digest": "A vote on evidence nobody can reconstruct is worthless: the digest pins what was in front of the delegate.",
+  "abstention-as-a-vote-value": "Abstention is the absence of a cast vote (PENDING), never a vote value folded into the tally."
+}

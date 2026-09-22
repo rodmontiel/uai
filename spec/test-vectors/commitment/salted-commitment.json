@@ -1,0 +1,57 @@
+{
+  "vector_set": "uai-cs-1/commitment",
+  "uai_version": "0.1",
+  "description": "Salted commitments: SHA-256(\"UAI-v1:commitment\" || 0x00 || salt || content). The salt is mandatory. A bare hash of low-entropy content is recoverable by dictionary attack, and commitments are published on-chain where that leak is permanent.",
+  "reference": "docs/protocol/04-cryptography.md#73-commitments--salted-never-bare-hashes",
+  "cases": [
+    {
+      "name": "low-entropy email",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "customer@example.com",
+      "commitment": "sha256:6576168ca6389d588bfab0652ebf13da5c8378a0ddaafb4fe660eaa055d6a770",
+      "opens": true
+    },
+    {
+      "name": "low-entropy answer",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "YES",
+      "commitment": "sha256:8e37fb17858f24a3afc98d155abfebda16ddf557ce7f3f5dea4a92a538386e59",
+      "opens": true
+    },
+    {
+      "name": "amount",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "4200.00",
+      "commitment": "sha256:4e1ea196774cebf15e8a0b27419694713ce3430cdad45f8b92f5cbcf72d5b094",
+      "opens": true
+    },
+    {
+      "name": "empty content",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "",
+      "commitment": "sha256:68d2358b66c5b38a9dc2e9ddb3360bd6af50270d9ceaa6dc1d8c5d62d91c41f2",
+      "opens": true
+    },
+    {
+      "name": "json payload",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "{\"resource\":\"urn:cloud:aws:eu-central-1:sg-0a1b2c3d\"}",
+      "commitment": "sha256:1c00af4b9d1ad87464f34e1b5f4ffde7226ec35965204965470ce7944d7583b0",
+      "opens": true
+    },
+    {
+      "name": "same content under a second salt",
+      "salt_hex": "00000000000000000000000000000000000000000000000000000000000000ff",
+      "content_utf8": "YES",
+      "commitment": "sha256:ca0f8562fc836b75c079d3035cdeb406d3de4cea1bdfa169202b5853ac6f3190",
+      "opens": true
+    },
+    {
+      "name": "wrong content does not open the commitment",
+      "salt_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "content_utf8": "NO",
+      "commitment": "sha256:8e37fb17858f24a3afc98d155abfebda16ddf557ce7f3f5dea4a92a538386e59",
+      "opens": false
+    }
+  ]
+}

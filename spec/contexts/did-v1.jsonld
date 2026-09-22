@@ -1,0 +1,29 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "uai": "https://uai.world/ns/did/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "keyProtection": {
+      "@id": "uai:keyProtection",
+      "@context": { "@protected": true }
+    },
+    "attestationFormat": "uai:attestationFormat",
+    "revokedAt": { "@id": "uai:revokedAt", "@type": "xsd:dateTime" },
+    "compromiseDeclaredAt": { "@id": "uai:compromiseDeclaredAt", "@type": "xsd:dateTime" },
+
+    "metadata": {
+      "@id": "uai:metadata",
+      "@context": {
+        "@protected": true,
+        "created": { "@id": "uai:created", "@type": "xsd:dateTime" },
+        "versionId": { "@id": "uai:versionId", "@type": "xsd:integer" },
+        "logIndex": { "@id": "uai:logIndex", "@type": "xsd:integer" },
+        "previousDocumentHash": "uai:previousDocumentHash"
+      }
+    },
+
+    "UAIVerification": "uai:UAIVerification"
+  }
+}

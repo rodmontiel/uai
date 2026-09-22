@@ -1,0 +1,35 @@
+{
+  "log_origin": "uai.world/log/1",
+  "log_index": 184213,
+  "leaf_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "checkpoint": {
+    "size": 184300,
+    "root": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "timestamp": "2026-09-22T14:02:05Z"
+  },
+  "inclusion_proof": [
+    "not-a-digest"
+  ],
+  "log_signature": {
+    "alg": "ES256",
+    "kid": "did:web:log.uai.world#key-1",
+    "domain": "UAI-v1:checkpoint",
+    "value": "zSigAbc"
+  },
+  "witness_signatures": [
+    {
+      "witness": "witness-de",
+      "value": "zW1"
+    },
+    {
+      "witness": "witness-jp",
+      "value": "zW2"
+    }
+  ],
+  "anchor": {
+    "chain_id": 13370,
+    "tx": "0xabc",
+    "block": 8829112,
+    "epoch": 412
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "identity": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "verified": true,
+  "status": "UAI_VERIFIED",
+  "assurance_level": "UAI-AL2",
+  "owner_verified": true,
+  "organization": "ACME Robotics",
+  "passport_status": "VALID",
+  "credential_valid": true,
+  "quarantined": true,
+  "revoked": false,
+  "capabilities": [
+    "route.optimize",
+    "crm.customer.read"
+  ],
+  "primary_jurisdiction": "AR",
+  "policy_version": "GASC-2027.4",
+  "last_transparency_checkpoint": {
+    "log_origin": "uai.world/log/1",
+    "size": 184300,
+    "root": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "timestamp": "2026-09-22T14:02:05Z"
+  },
+  "last_anchor": {
+    "chain_id": 13370,
+    "tx": "0xabc",
+    "block": 8829112
+  },
+  "proof": "https://verify.uai.world/uai:agent:01JY8R9ZAF392N7QX2T81JH6KM/proof",
+  "as_of": "2026-09-22T14:03:00Z",
+  "cache_max_age": 60
+}

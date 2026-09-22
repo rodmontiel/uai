@@ -1,0 +1,57 @@
+{
+  "decision_id": "01JY8RF60000000000000000ZZ",
+  "case_id": "UAI-INC-000041",
+  "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "proposal": "PERMANENT_REVOCATION",
+  "policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "threshold": "4-of-5"
+  },
+  "evidence_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "tally": {
+    "YES": 4,
+    "NO": 1,
+    "PENDING": 0
+  },
+  "votes": [
+    {
+      "vote_id": "01JY8RE50000000000000000AA",
+      "delegate_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "country": "AR",
+      "vote": "YES",
+      "assertion_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "vote_id": "01JY8RE50000000000000000BB",
+      "delegate_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "country": "DE",
+      "vote": "YES",
+      "assertion_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "vote_id": "01JY8RE50000000000000000CC",
+      "delegate_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "country": "JP",
+      "vote": "NO",
+      "assertion_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "vote_id": "01JY8RE50000000000000000DD",
+      "delegate_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "country": "CA",
+      "vote": "YES",
+      "assertion_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "vote_id": "01JY8RE50000000000000000EE",
+      "delegate_did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+      "country": "IN",
+      "vote": "YES",
+      "assertion_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "authorized_at": "2026-09-25T11:02:00Z",
+  "governance_proof": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status": "AUTHORIZED"
+}

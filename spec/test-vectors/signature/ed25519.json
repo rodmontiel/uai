@@ -1,0 +1,82 @@
+{
+  "vector_set": "uai-cs-1/ed25519",
+  "uai_version": "0.1",
+  "description": "Ed25519 signatures over domain-separated canonical bytes. Ed25519 is deterministic (RFC 8032), so the signature bytes are pinned: a conformant implementation reproduces them exactly.",
+  "reference": "docs/protocol/04-cryptography.md#75-signature-envelopes",
+  "cases": [
+    {
+      "name": "attestation payload",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:attestation",
+      "payload_json": "{\"event_id\":\"01JY8RA3C7K2V9M0QW4T6Z8XPD\",\"sequence\":418}",
+      "canonical": "{\"event_id\":\"01JY8RA3C7K2V9M0QW4T6Z8XPD\",\"sequence\":418}",
+      "signature_b64url": "eua1euWBIJSsh1edEhNdQMYh8BOoQbBSEiKv7aqqUTTOU9qLq9jX70lKZzkKBJGY3mSCyluyINZhcBejjVKICA",
+      "verify_domain": "UAI-v1:attestation",
+      "must_verify": true
+    },
+    {
+      "name": "vote payload",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "canonical": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "signature_b64url": "YpF6bFOBKdXGLbN4cDoyICLiSpbR2bkD-KoXg9MNLWp9OcW9KXO1BCkZQAClTl39W5J41Iir2MN_wE_PJlGnBg",
+      "verify_domain": "UAI-v1:vote",
+      "must_verify": true
+    },
+    {
+      "name": "decision payload",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:decision",
+      "payload_json": "{\"decision\":\"ALLOW_WITH_MONITORING\",\"policy_version\":\"GASC-2027.4\"}",
+      "canonical": "{\"decision\":\"ALLOW_WITH_MONITORING\",\"policy_version\":\"GASC-2027.4\"}",
+      "signature_b64url": "8m_ZcaRl8oaBsjqJR0rxeouK6H1Zja-nG6nPqjXkjNqfyf0OlbgK5d_zwWTuBAq6TAegOGOl_-6CF-bIYQq3Cg",
+      "verify_domain": "UAI-v1:decision",
+      "must_verify": true
+    },
+    {
+      "name": "empty object",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:credential",
+      "payload_json": "{}",
+      "canonical": "{}",
+      "signature_b64url": "eiY84D00EZZ30tPndYZXZaI3R4iVppmFHT0McsMMq6h12BTFXYR9I1lagF0j4TWTtsbEZHpNfojQuqWCFs6lDg",
+      "verify_domain": "UAI-v1:credential",
+      "must_verify": true
+    },
+    {
+      "name": "vote signature MUST NOT verify as an attestation",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"x\":1}",
+      "canonical": "{\"x\":1}",
+      "signature_b64url": "ruEzqZ1N1ogu7cLyQOg6nUEIoYB-nfZ25SOe4hZ-r5vq11s_r78a9vT5_KLR0Zu5x_pDQr3h05HuEL62q3NcCw",
+      "verify_domain": "UAI-v1:attestation",
+      "must_verify": false,
+      "failure_reason": "domain mismatch: the domain is inside the signed bytes, so relabelling the envelope does not help"
+    },
+    {
+      "name": "tampered payload MUST NOT verify",
+      "alg": "EdDSA",
+      "seed_hex": "8ca4de166483363543decbb1e95aa60049e59a0b1183f05a489a0461d0478dda",
+      "public_key_hex": "8c63bc22d9579a2ded2d0c2ce598286ba6de87572bd39a16d3121d6599da5edc",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"x\":2}",
+      "canonical": "{\"x\":2}",
+      "signature_b64url": "ruEzqZ1N1ogu7cLyQOg6nUEIoYB-nfZ25SOe4hZ-r5vq11s_r78a9vT5_KLR0Zu5x_pDQr3h05HuEL62q3NcCw",
+      "verify_domain": "UAI-v1:vote",
+      "must_verify": false,
+      "failure_reason": "payload differs from the signed canonical bytes"
+    }
+  ]
+}

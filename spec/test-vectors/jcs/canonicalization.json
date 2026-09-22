@@ -1,0 +1,110 @@
+{
+  "vector_set": "uai-cs-1/jcs",
+  "uai_version": "0.1",
+  "description": "RFC 8785 JSON Canonicalization Scheme. Every UAI hash and signature is computed over these bytes, so an implementation that canonicalizes differently cannot verify anything UAI produces.",
+  "reference": "docs/protocol/04-cryptography.md#72-canonicalization-and-domain-separation",
+  "cases": [
+    {
+      "name": "member ordering",
+      "input_json": "{ \"b\": 1, \"a\": 2, \"c\": { \"z\": true, \"y\": null } }",
+      "canonical": "{\"a\":2,\"b\":1,\"c\":{\"y\":null,\"z\":true}}",
+      "canonical_sha256": "e238c7551aeab3a4d63763242b13268386f4975976255faf6cd722430bbe8800"
+    },
+    {
+      "name": "whitespace removed",
+      "input_json": "{\n  \"a\" : 1 ,\n  \"b\" : [ 1 , 2 ]\n}",
+      "canonical": "{\"a\":1,\"b\":[1,2]}",
+      "canonical_sha256": "8baa73198470c7bb4c3ce142a8fd651affc0310d878bb9bd159e37a573fb4874"
+    },
+    {
+      "name": "integer valued float",
+      "input_json": "{\"n\":1.0}",
+      "canonical": "{\"n\":1}",
+      "canonical_sha256": "2bfd14f43d17fc7cea24e0917a8879b4b2f880b8baeec1b9d90fbaad655e71bd"
+    },
+    {
+      "name": "negative zero",
+      "input_json": "{\"n\":-0}",
+      "canonical": "{\"n\":0}",
+      "canonical_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0"
+    },
+    {
+      "name": "exponent normalized to plain",
+      "input_json": "{\"n\":1e2}",
+      "canonical": "{\"n\":100}",
+      "canonical_sha256": "b39022c4ed96525c42cd0e7ce55308533962a655f1c19d5dac2f03e9dd995b2c"
+    },
+    {
+      "name": "smallest plain notation",
+      "input_json": "{\"n\":0.000001}",
+      "canonical": "{\"n\":0.000001}",
+      "canonical_sha256": "28343867a0be00aee19f81aa90cfd6c646878b9303fa15410d16bfd3f8894578"
+    },
+    {
+      "name": "exponential above 1e21",
+      "input_json": "{\"n\":1e21}",
+      "canonical": "{\"n\":1e+21}",
+      "canonical_sha256": "f1ee2b60ee95a3170fdc07a577e5f3514ced26867443d69da265acadead81007"
+    },
+    {
+      "name": "exponential below 1e-6",
+      "input_json": "{\"n\":1e-7}",
+      "canonical": "{\"n\":1e-7}",
+      "canonical_sha256": "747d6d23b64d1b2d579adb832b44de31c91c875bbef7a8e397f5d183a746b54b"
+    },
+    {
+      "name": "large exponent",
+      "input_json": "{\"n\":1.5e300}",
+      "canonical": "{\"n\":1.5e+300}",
+      "canonical_sha256": "51c98cbe81aa6082fbd6d88272ef7d1a8efc8d6f13eb16c82376139150676760"
+    },
+    {
+      "name": "fraction preserved",
+      "input_json": "{\"n\":333333333.33}",
+      "canonical": "{\"n\":333333333.33}",
+      "canonical_sha256": "4f59cf248435cb13e858868b3c4ec1cdff0b66a3154936ef9948282c317388c7"
+    },
+    {
+      "name": "mandatory and short escapes",
+      "input_json": "{\"s\":\"a\\\"b\\\\c\\nd\\te\"}",
+      "canonical": "{\"s\":\"a\\\"b\\\\c\\nd\\te\"}",
+      "canonical_sha256": "3fe8db26dc2df0fc1e6cea51d173b76578b486002a00307b508f9fa116c30a36"
+    },
+    {
+      "name": "control character escaped as u00xx",
+      "input_json": "{\"s\":\"\\u0007\"}",
+      "canonical": "{\"s\":\"\\u0007\"}",
+      "canonical_sha256": "b3eed11c8ee687c3bf0dbc8e9e99d0ad3895ad5aa4db9abdd978e9f5eab857f0"
+    },
+    {
+      "name": "non-ascii stays literal",
+      "input_json": "{\"s\":\"é中\"}",
+      "canonical": "{\"s\":\"é中\"}",
+      "canonical_sha256": "ac54597a2eff1d6219ad3c1e69fa5dec41232219a99badb93cf4a098f31d5ae0"
+    },
+    {
+      "name": "utf-16 member ordering across the BMP boundary",
+      "input_json": "{\"😀\":1,\"דּ\":2}",
+      "canonical": "{\"😀\":1,\"דּ\":2}",
+      "canonical_sha256": "2aa3f5086e32bb90ce39c508a6f40fd72e792684f130d0f3b896ea191368f1e3"
+    },
+    {
+      "name": "nested arrays and objects",
+      "input_json": "{\"z\":[{\"b\":2,\"a\":1}],\"a\":[]}",
+      "canonical": "{\"a\":[],\"z\":[{\"a\":1,\"b\":2}]}",
+      "canonical_sha256": "4e6291229607a1a54e2a0f6611011c2ef766daead3fbf28587093882ad5e2193"
+    },
+    {
+      "name": "empty object and array",
+      "input_json": "{\"o\":{},\"a\":[]}",
+      "canonical": "{\"a\":[],\"o\":{}}",
+      "canonical_sha256": "9bee7ebfc94b459dacb8cbc72cb2900e61f0aa42189df18329f84f92568f4f89"
+    },
+    {
+      "name": "booleans and null",
+      "input_json": "{\"t\":true,\"f\":false,\"n\":null}",
+      "canonical": "{\"f\":false,\"n\":null,\"t\":true}",
+      "canonical_sha256": "22e00dc2f7b01420f940fbdbfbdf34fa0667cc6500186495023ba37722cbd05e"
+    }
+  ]
+}

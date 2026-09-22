@@ -1,0 +1,5 @@
+{
+  "passport-without-expiry": "A passport without an expiry is a standing authorization nobody reviews.",
+  "no-authorized-capabilities": "A passport that authorizes nothing is not a passport; an empty list would read as unrestricted to a careless verifier.",
+  "unsigned-credential": "INV-001: nothing is treated as verified without cryptographic proof."
+}

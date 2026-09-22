@@ -1,0 +1,62 @@
+{
+  "vector_set": "uai-cs-1/ecdsa",
+  "uai_version": "0.1",
+  "description": "ECDSA P-256 and P-384 over domain-separated canonical bytes, with fixed-width R||S so signatures interoperate with JOSE and WebAuthn. ECDSA is randomized, so these cases are verify-only: the committed signature MUST verify and the negative cases MUST NOT.",
+  "reference": "docs/protocol/04-cryptography.md#71-cipher-suite-uai-cs-1",
+  "cases": [
+    {
+      "name": "P-256 vote signature verifies",
+      "alg": "ES256",
+      "public_key_x_hex": "f66226588d84885924f7732866c863a2a20016ce284108a6d9f50299976a9ff3",
+      "public_key_y_hex": "a3e18a45f680ce54b958b768e1327fb801f22f16517f093614a0b8f910384a64",
+      "curve": "P-256",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "canonical": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "signature_b64url": "5bvXOEIMVJRmCcwwcjsMC079_RnMAgEho7bwvL3uWRPh_QQ52yuacVOhbOFdv4pUZ1lhj9XKA_cMxI6dIRwmpw",
+      "verify_domain": "UAI-v1:vote",
+      "must_verify": true
+    },
+    {
+      "name": "P-256 signature MUST NOT verify in another domain",
+      "alg": "ES256",
+      "public_key_x_hex": "f66226588d84885924f7732866c863a2a20016ce284108a6d9f50299976a9ff3",
+      "public_key_y_hex": "a3e18a45f680ce54b958b768e1327fb801f22f16517f093614a0b8f910384a64",
+      "curve": "P-256",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "canonical": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "signature_b64url": "5bvXOEIMVJRmCcwwcjsMC079_RnMAgEho7bwvL3uWRPh_QQ52yuacVOhbOFdv4pUZ1lhj9XKA_cMxI6dIRwmpw",
+      "verify_domain": "UAI-v1:attestation",
+      "must_verify": false,
+      "failure_reason": "domain mismatch"
+    },
+    {
+      "name": "P-384 vote signature verifies",
+      "alg": "ES384",
+      "public_key_x_hex": "6d1018d4764c1c88d06e0d9ec7e5d0253c61225b0de31bc70256f5283c6156290b52a294f51ec14fa25b7337502c3327",
+      "public_key_y_hex": "285b3461c4f2e0cd647a329400ecbea3af149f710703aadf884bef5d70ef881ef1bf5f28cc96e3ac8d760ed099380884",
+      "curve": "P-384",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "canonical": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "signature_b64url": "feD1JVVltTa-U_McJhsid3FR7JNk7tr_2gn_6kk3nLxrkcdpy3WVgKCEetd091_zQq3wZZZMhL8q7bcd4Au-XtaT7SM8n-vEj3ZBiOwrBeythOCMNEbfriGFbw45eK_B",
+      "verify_domain": "UAI-v1:vote",
+      "must_verify": true
+    },
+    {
+      "name": "P-384 signature MUST NOT verify in another domain",
+      "alg": "ES384",
+      "public_key_x_hex": "6d1018d4764c1c88d06e0d9ec7e5d0253c61225b0de31bc70256f5283c6156290b52a294f51ec14fa25b7337502c3327",
+      "public_key_y_hex": "285b3461c4f2e0cd647a329400ecbea3af149f710703aadf884bef5d70ef881ef1bf5f28cc96e3ac8d760ed099380884",
+      "curve": "P-384",
+      "domain": "UAI-v1:vote",
+      "payload_json": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "canonical": "{\"case_id\":\"UAI-INC-000041\",\"vote\":\"YES\"}",
+      "signature_b64url": "feD1JVVltTa-U_McJhsid3FR7JNk7tr_2gn_6kk3nLxrkcdpy3WVgKCEetd091_zQq3wZZZMhL8q7bcd4Au-XtaT7SM8n-vEj3ZBiOwrBeythOCMNEbfriGFbw45eK_B",
+      "verify_domain": "UAI-v1:attestation",
+      "must_verify": false,
+      "failure_reason": "domain mismatch"
+    }
+  ]
+}

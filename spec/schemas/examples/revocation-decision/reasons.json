@@ -1,0 +1,5 @@
+{
+  "authorized-without-votes": "INV-010: permanent revocation requires evidence of a valid human decision. An empty vote list is not that evidence.",
+  "no-governance-proof": "The governance proof is what the smart contract verifies. Without it no revocation can be executed.",
+  "no-threshold-recorded": "The threshold applied must be recorded with the decision, so a later auditor can check the tally against the rule in force at the time."
+}

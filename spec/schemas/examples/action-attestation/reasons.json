@@ -1,0 +1,8 @@
+{
+  "signature-in-wrong-domain": "The signature declares the vote domain. A verifier must reject a signature whose domain does not match the context, even when it is cryptographically valid.",
+  "decision-without-bundle-hash": "INV-009: a decision must name the exact policy version AND its bundle hash, or it cannot be replayed by an auditor.",
+  "cross-border-without-target": "cross_border is true with no target jurisdiction, so the action cannot be audited against passport scope.",
+  "passport-required-but-absent": "The action declares a passport is required but records neither its hash nor its status at decision time.",
+  "unsigned": "INV-002: an action is never attributed by a string identifier alone.",
+  "malformed-commitment": "Commitments must be in the sha256:<64 hex> wire form."
+}

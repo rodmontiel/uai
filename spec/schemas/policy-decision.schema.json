@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/policy-decision.schema.json",
+  "title": "UAI Policy Decision Record",
+  "description": "The evidence a Policy Decision Point produces for EVERY decision, including ALLOW. A guardrail that records only denials cannot answer what was permitted and why, which is the question that matters after an incident.",
+  "type": "object",
+  "required": ["decision_id", "agent_did", "requested", "jurisdiction", "policy", "checks", "decision", "degraded", "evaluated_at", "signature"],
+  "properties": {
+    "decision_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "requested": {
+      "type": "object",
+      "required": ["capability", "purpose"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1 },
+        "purpose": { "type": "string", "minLength": 1 },
+        "resource": { "type": "string" }
+      }
+    },
+    "jurisdiction": { "$ref": "common.schema.json#/$defs/jurisdictionContext" },
+    "policy": { "$ref": "common.schema.json#/$defs/policyReference" },
+    "checks": {
+      "type": "object",
+      "required": ["identity", "runtime", "capability", "passport", "guardrail"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/checkResult" },
+        "runtime": { "$ref": "#/$defs/checkResult" },
+        "capability": { "$ref": "#/$defs/checkResult" },
+        "passport": { "$ref": "#/$defs/checkResult" },
+        "guardrail": { "$ref": "#/$defs/checkResult" }
+      }
+    },
+    "rules_fired": { "type": "array", "items": { "type": "string" } },
+    "harm_assessment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "severity"],
+        "properties": {
+          "category": { "$ref": "common.schema.json#/$defs/harmCategory" },
+          "severity": { "$ref": "common.schema.json#/$defs/severity" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "decision": { "enum": ["ALLOW", "ALLOW_WITH_MONITORING", "REQUIRE_HUMAN_APPROVAL", "DENY", "QUARANTINE"] },
+    "conditions": { "type": "object" },
+    "degraded": {
+      "type": "boolean",
+      "description": "True when the decision used a cached bundle because the policy service was unreachable. Honest degraded operation is recorded as degraded rather than disguised as normal."
+    },
+    "bundle_staleness_seconds": { "type": "integer", "minimum": 0 },
+    "evaluated_at": { "type": "string", "format": "date-time" },
+    "signature": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/signature" }],
+      "properties": { "domain": { "const": "UAI-v1:decision" } }
+    }
+  },
+  "$defs": {
+    "checkResult": { "enum": ["PASS", "PASS_WITH_CONDITIONS", "FAIL", "SKIPPED", "UNAVAILABLE"] }
+  }
+}

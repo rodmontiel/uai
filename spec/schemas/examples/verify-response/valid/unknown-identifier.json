@@ -1,0 +1,9 @@
+{
+  "identity": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "verified": false,
+  "status": "UAI_UNVERIFIED",
+  "quarantined": false,
+  "revoked": false,
+  "note": "No verifiable UAI identity exists for this identifier; this is not an assertion that the agent is malicious.",
+  "as_of": "2026-09-22T14:03:00Z"
+}

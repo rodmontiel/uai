@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/revocation-decision.schema.json",
+  "title": "UAI Revocation Decision",
+  "description": "The authorization produced by a human vote reaching the policy threshold. The governance_proof is what the smart contract verifies, so a compromised administrator with full database access still cannot revoke an identity: the authority lives in delegate signatures, not in an editable row.",
+  "type": "object",
+  "required": ["decision_id", "case_id", "subject_agent_did", "proposal", "policy", "evidence_digest", "tally", "votes", "authorized_at", "governance_proof", "status"],
+  "properties": {
+    "decision_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "case_id": { "type": "string", "pattern": "^UAI-INC-[0-9]{6}$" },
+    "subject_agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "proposal": { "const": "PERMANENT_REVOCATION" },
+    "policy": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/policyReference" }],
+      "type": "object",
+      "required": ["version", "bundle_hash", "threshold"],
+      "properties": { "threshold": { "type": "string", "pattern": "^[0-9]+-of-[0-9]+$" } }
+    },
+    "evidence_digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+    "tally": {
+      "type": "object",
+      "required": ["YES", "NO", "PENDING"],
+      "properties": {
+        "YES": { "type": "integer", "minimum": 0 },
+        "NO": { "type": "integer", "minimum": 0 },
+        "PENDING": { "type": "integer", "minimum": 0 }
+      },
+      "description": "A derived view. The authoritative tally is recomputed from the signed vote statements; this field is never the source of truth."
+    },
+    "votes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["vote_id", "delegate_did", "country", "vote", "assertion_commitment"],
+        "properties": {
+          "vote_id": { "$ref": "common.schema.json#/$defs/ulid" },
+          "delegate_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+          "country": { "$ref": "common.schema.json#/$defs/isoCountry" },
+          "vote": { "enum": ["YES", "NO"] },
+          "assertion_commitment": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+        }
+      }
+    },
+    "authorized_at": { "type": "string", "format": "date-time" },
+    "governance_proof": {
+      "$ref": "common.schema.json#/$defs/sha256Digest",
+      "description": "Hash of the canonical bundle {case_id, proposal, evidence_digest, policy, all vote statements with assertions}. Verified on-chain, not only in application code."
+    },
+    "status": { "enum": ["AUTHORIZED", "EXECUTED", "REJECTED", "EXPIRED"] }
+  }
+}

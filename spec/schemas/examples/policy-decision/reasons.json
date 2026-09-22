@@ -1,0 +1,5 @@
+{
+  "decision-without-policy-version": "INV-009: every guardrail decision names the exact policy version in force.",
+  "signature-in-wrong-domain": "A decision signature must be made in the decision domain.",
+  "missing-passport-check": "All five checks are recorded, including the ones that were skipped: an absent check is not a passed check."
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/harm-suspicion.schema.json",
+  "title": "UAI Harm Suspicion",
+  "description": "A claim that warrants examination. It is never a finding: there is deliberately no field in which a reporter can record a verdict. Accusation is a consequential act, so the reporter is always identified — there is no anonymous path into this object.",
+  "type": "object",
+  "required": ["suspicion_id", "reported_at", "reporter", "subject", "harm_categories", "confidence", "signature"],
+  "properties": {
+    "suspicion_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "reported_at": { "type": "string", "format": "date-time" },
+    "reporter": {
+      "type": "object",
+      "required": ["did", "type"],
+      "properties": {
+        "did": { "$ref": "common.schema.json#/$defs/did" },
+        "type": { "enum": ["AUTOMATED_GUARDRAIL", "ANOMALY_DETECTOR", "HUMAN_REPORT", "EXTERNAL_SYSTEM", "SECURITY_MONITOR", "PARTICIPATING_ORGANIZATION", "AUDITOR"] },
+        "credential_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["agent_did", "owner_did"],
+      "properties": {
+        "agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+        "owner_did": { "$ref": "common.schema.json#/$defs/did" }
+      }
+    },
+    "related_events": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ulid" } },
+    "harm_categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["category", "severity"],
+        "properties": {
+          "category": { "$ref": "common.schema.json#/$defs/harmCategory" },
+          "severity": { "$ref": "common.schema.json#/$defs/severity" }
+        }
+      }
+    },
+    "guardrail": {
+      "type": "object",
+      "properties": {
+        "rule": { "type": "string" },
+        "policy_version": { "type": "string" },
+        "bundle_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+      }
+    },
+    "evidence_commitments": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/commitment" } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "affected_jurisdictions": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/isoCountry" } },
+    "signature": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/signature" }],
+      "properties": { "domain": { "const": "UAI-v1:quarantine" } }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["verdict"] },
+      { "required": ["guilty"] },
+      { "required": ["finding"] }
+    ]
+  }
+}

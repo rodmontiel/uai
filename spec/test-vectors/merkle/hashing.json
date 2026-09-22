@@ -1,0 +1,37 @@
+{
+  "vector_set": "uai-cs-1/merkle-hashing",
+  "uai_version": "0.1",
+  "description": "RFC 6962 leaf and node hashing. The 0x00 and 0x01 prefixes are second-preimage protection: without them an interior node hash can be presented as a leaf hash and every inclusion proof becomes forgeable.",
+  "reference": "docs/protocol/04-cryptography.md#74-merkle-trees-rfc-6962-profile",
+  "cases": [
+    {
+      "name": "empty tree root",
+      "kind": "empty",
+      "hash_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "leaf (empty)",
+      "kind": "leaf",
+      "hash_hex": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    },
+    {
+      "name": "leaf \"a\"",
+      "kind": "leaf",
+      "data_utf8": "a",
+      "hash_hex": "022a6979e6dab7aa5ae4c3e5e45f7e977112a7e63593820dbec1ec738a24f93c"
+    },
+    {
+      "name": "leaf \"entry-0000\"",
+      "kind": "leaf",
+      "data_utf8": "entry-0000",
+      "hash_hex": "fa2b387819e9608a340db6afc41aa6b10f4b920d481ffd9bbc6b43680e93450a"
+    },
+    {
+      "name": "interior node of leaves a and b",
+      "kind": "node",
+      "left_hex": "022a6979e6dab7aa5ae4c3e5e45f7e977112a7e63593820dbec1ec738a24f93c",
+      "right_hex": "57eb35615d47f34ec714cacdf5fd74608a5e8e102724e80b24b287c0c27b6a31",
+      "hash_hex": "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
+    }
+  ]
+}

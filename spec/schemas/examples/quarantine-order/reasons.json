@@ -1,0 +1,5 @@
+{
+  "quarantine-without-expiry": "A preventive measure with no expiry becomes punishment by inertia. The time box is mandatory.",
+  "cascades-to-unrelated-agents": "A quarantine must never disable the owner's other agents that have no link to the incident.",
+  "owner-restriction-outside-the-allowed-set": "Owner restrictions are narrow and forward-looking: new high-risk registrations, new passports, capability elevation. Nothing else."
+}

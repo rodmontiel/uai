@@ -51,16 +51,25 @@ when its own stated deliverable exists in this repository.
 | Phase | Status | What |
 |---|---|---|
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
-| 2 Protocol | ⬜ **not started** | JSON Schemas, JSON-LD contexts, OpenAPI, published test vectors, `uai-conformance`. `spec/` is empty |
+| 2 Protocol | ✅ | 10 JSON Schemas with 40 examples, 3 JSON-LD contexts, OpenAPI 3.1 (21 paths), 9 published vector sets, `uai-conformance` |
 | 3 Data | ✅ | PostgreSQL schema, 34 tables, integrity guards, 35 executable invariant assertions |
 | 4 Backend core | ⬜ | identity, registry, credential, action services |
 | 5 Cryptography | 🟡 **partial** | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` implemented and tested. Proof of possession, transparency receipts and key rotation pending |
 | 6–12 | ⬜ | Policy engine, contracts, frontend, SDKs, demo, security, deployment |
 
 Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
-anything else could be built. That ordering has a cost worth naming: **the crypto core is
-tested against itself, not against published vectors.** Until Phase 2 lands, nobody outside
-this repository can check an independent implementation for conformance.
+anything else could be built. Phase 2 has since closed that gap: the crypto core is now checked
+against **committed vectors**, and an implementation in any language can be verified against the
+same files without running this code.
+
+```bash
+make conformance     # 125 checks: vectors, schemas, OpenAPI
+make vectors-check   # fails if regenerating the vectors would change them
+```
+
+Every vector set and every schema carries negative cases. Passing only the positive ones would
+not demonstrate domain separation, rejection of malformed identifiers, fork detection, or that a
+vote without hardware user verification is refused.
 
 ```bash
 make test        # Go unit tests (identifiers, crypto suite, Merkle log)

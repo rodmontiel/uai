@@ -1,0 +1,52 @@
+{
+  "uai_version": "0.1",
+  "event_id": "01JY8RA3C7K2V9M0QW4T6Z8XPD",
+  "agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
+  "runtime_identity": "spiffe://uai.world/agents/01JY8R9ZAF392N7QX2T81JH6KM/i/7f6a92",
+  "timestamp": "2026-09-22T14:02:04.117Z",
+  "nonce": "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
+  "action": {
+    "type": "infrastructure.modify",
+    "resource": "urn:cloud:aws:eu-central-1:sg-0a1b2c3d",
+    "capability": "cloud.securitygroup.update",
+    "risk_class": "CRITICAL"
+  },
+  "purpose": "incident_remediation",
+  "jurisdiction": {
+    "origin": "AR",
+    "targets": [
+      "DE"
+    ],
+    "data_locations": [
+      "DE"
+    ],
+    "cross_border": true,
+    "basis": "resource_location"
+  },
+  "policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "decision_id": "01JY8RA3C00000000000000000",
+    "decision": "ALLOW_WITH_MONITORING",
+    "rules_fired": [
+      "gasc.infra.cross_border_change"
+    ]
+  },
+  "passport": {
+    "required": true,
+    "credential_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status_at_decision": "VALID"
+  },
+  "input_commitment": "deadbeef",
+  "output_commitment": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "outcome": "SUCCESS",
+  "previous_event_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sequence": 418,
+  "signature": {
+    "alg": "EdDSA",
+    "kid": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1",
+    "domain": "UAI-v1:attestation",
+    "value": "z5kRabc-_123"
+  }
+}

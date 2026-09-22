@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/vote-statement.schema.json",
+  "title": "UAI Vote Statement",
+  "description": "A human delegate's signed vote. The WebAuthn challenge IS the digest of this statement, so the hardware assertion covers the voted content rather than merely the session: a compromised frontend cannot alter a vote without invalidating the assertion.",
+  "type": "object",
+  "required": ["vote_id", "case_id", "proposal", "subject_agent_did", "evidence_digest", "policy", "delegate", "vote", "cast_at", "nonce", "assertion"],
+  "properties": {
+    "vote_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "case_id": { "type": "string", "pattern": "^UAI-INC-[0-9]{6}$" },
+    "proposal": { "enum": ["PERMANENT_REVOCATION", "CAPABILITY_RESTRICTION", "ASSURANCE_DOWNGRADE", "PASSPORT_REVOCATION", "CLEARANCE"] },
+    "subject_agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "evidence_digest": {
+      "$ref": "common.schema.json#/$defs/sha256Digest",
+      "description": "Pins what was in front of the delegate. If evidence changes afterwards, prior votes are marked STALE_EVIDENCE."
+    },
+    "policy": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/policyReference" }],
+      "type": "object",
+      "required": ["version", "bundle_hash", "threshold"],
+      "properties": { "threshold": { "type": "string", "pattern": "^[0-9]+-of-[0-9]+$" } }
+    },
+    "delegate": {
+      "type": "object",
+      "required": ["did", "country", "credential_hash"],
+      "properties": {
+        "did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+        "country": { "$ref": "common.schema.json#/$defs/isoCountry" },
+        "credential_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+      }
+    },
+    "vote": { "enum": ["YES", "NO"] },
+    "rationale_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+    "cast_at": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string", "pattern": "^[0-9a-f]{32,}$" },
+    "supersedes": { "$ref": "common.schema.json#/$defs/ulid" },
+    "assertion": {
+      "type": "object",
+      "required": ["authenticator_data", "client_data_json", "signature", "user_verified"],
+      "properties": {
+        "authenticator_data": { "type": "string", "contentEncoding": "base64url" },
+        "client_data_json": { "type": "string", "contentEncoding": "base64url" },
+        "signature": { "type": "string", "contentEncoding": "base64url" },
+        "user_verified": {
+          "const": true,
+          "description": "INV-005: no automated process can produce a user-verified assertion from a hardware authenticator. An assertion without user verification is not a vote."
+        }
+      }
+    }
+  }
+}

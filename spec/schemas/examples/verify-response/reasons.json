@@ -1,0 +1,4 @@
+{
+  "revoked-but-reported-verified": "A revoked or quarantined identity is never reported as verified.",
+  "quarantined-but-reported-verified": "Quarantine suspends trust in the identity for the duration; verified must be false."
+}

@@ -1,0 +1,53 @@
+{
+  "decision_id": "01JY8RA3C0000000000000000Z",
+  "agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "requested": {
+    "capability": "cloud.securitygroup.update",
+    "purpose": "incident_remediation",
+    "resource": "urn:cloud:aws:eu-central-1:sg-0a1b2c3d"
+  },
+  "jurisdiction": {
+    "origin": "AR",
+    "targets": [
+      "DE"
+    ],
+    "cross_border": true,
+    "basis": "resource_location"
+  },
+  "policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "checks": {
+    "identity": "PASS",
+    "runtime": "PASS",
+    "capability": "PASS",
+    "passport": "PASS",
+    "guardrail": "PASS_WITH_CONDITIONS"
+  },
+  "rules_fired": [
+    "gasc.infra.cross_border_change",
+    "gasc.capability.assurance_floor"
+  ],
+  "harm_assessment": [
+    {
+      "category": "CRITICAL_INFRASTRUCTURE",
+      "severity": 3,
+      "confidence": 0.62
+    }
+  ],
+  "decision": "ALLOW_WITH_MONITORING",
+  "conditions": {
+    "monitor_window_seconds": 3600,
+    "attest_output": true
+  },
+  "degraded": false,
+  "bundle_staleness_seconds": 0,
+  "evaluated_at": "2026-09-22T14:02:03.902Z",
+  "signature": {
+    "alg": "EdDSA",
+    "kid": "did:web:pdp.uai.world#key-1",
+    "domain": "UAI-v1:attestation",
+    "value": "zSigAbc"
+  }
+}

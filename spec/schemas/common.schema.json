@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/common.schema.json",
+  "title": "UAI common definitions",
+  "description": "Shared primitives for every UAI wire object. Digest and identifier patterns are enforced here so that a malformed value cannot enter the system through any schema.",
+  "$defs": {
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 in the UAI wire form."
+    },
+    "commitment": {
+      "$ref": "#/$defs/sha256Digest",
+      "description": "A SALTED commitment: SHA-256(domain || 0x00 || salt || content). A field named *_commitment never carries a bare hash of content, because a bare hash of low-entropy content is recoverable by dictionary attack and commitments are published on-chain."
+    },
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Crockford base32 ULID, 26 characters, uppercase canonical form."
+    },
+    "uaiId": {
+      "type": "string",
+      "pattern": "^uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "uaiDid": {
+      "type": "string",
+      "pattern": "^did:uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "did": {
+      "type": "string",
+      "pattern": "^did:(uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}|web:[A-Za-z0-9._%-]+(:[A-Za-z0-9._%-]+)*|key:z[1-9A-HJ-NP-Za-km-z]+)$",
+      "description": "did:uai, did:web (organizations, so an org can prove identity with infrastructure UAI does not control) or did:key."
+    },
+    "didUrl": {
+      "type": "string",
+      "pattern": "^did:[a-z0-9]+:[A-Za-z0-9._%:-]+#[A-Za-z0-9._-]+$",
+      "description": "A DID with a verification-method fragment."
+    },
+    "isoCountry": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "assuranceLevel": { "enum": ["UAI-AL0", "UAI-AL1", "UAI-AL2", "UAI-AL3"] },
+    "riskClass": { "enum": ["INFORMATIONAL", "LOW", "MODERATE", "HIGH", "CRITICAL"] },
+    "harmCategory": {
+      "enum": [
+        "PHYSICAL_HARM", "CYBER_HARM", "PRIVACY_HARM", "FINANCIAL_HARM", "ENVIRONMENTAL_HARM",
+        "CRITICAL_INFRASTRUCTURE", "FRAUD_OR_DECEPTION", "UNAUTHORIZED_ACCESS", "DATA_EXFILTRATION",
+        "HUMAN_RIGHTS_RISK", "SAFETY_SYSTEM_BYPASS", "MALICIOUS_AUTONOMOUS_PROPAGATION"
+      ]
+    },
+    "severity": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "domain": {
+      "enum": [
+        "UAI-v1:attestation", "UAI-v1:credential", "UAI-v1:did-document", "UAI-v1:challenge",
+        "UAI-v1:vote", "UAI-v1:decision", "UAI-v1:quarantine", "UAI-v1:revocation",
+        "UAI-v1:checkpoint", "UAI-v1:commitment", "UAI-v1:audit"
+      ],
+      "description": "Domain separation string. A verifier MUST reject a signature whose domain does not match the context it is being verified in, even when the signature is otherwise valid."
+    },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "kid", "domain", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "alg": { "enum": ["EdDSA", "ES256", "ES384"] },
+        "kid": { "$ref": "#/$defs/didUrl" },
+        "domain": { "$ref": "#/$defs/domain" },
+        "value": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "base64url, no padding" }
+      }
+    },
+    "policyReference": {
+      "type": "object",
+      "required": ["version", "bundle_hash"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1, "examples": ["GASC-2027.4"] },
+        "bundle_hash": { "$ref": "#/$defs/sha256Digest" }
+      },
+      "description": "INV-009: every guardrail decision names the exact policy version in force. Both fields are mandatory wherever a policy was consulted."
+    },
+    "jurisdictionContext": {
+      "type": "object",
+      "required": ["origin", "targets", "cross_border", "basis"],
+      "properties": {
+        "origin": { "$ref": "#/$defs/isoCountry" },
+        "targets": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
+        "data_locations": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
+        "subject_jurisdictions": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
+        "cross_border": { "type": "boolean" },
+        "basis": {
+          "enum": ["owner_jurisdiction", "execution_region", "subject_jurisdiction",
+                   "resource_location", "data_location", "infrastructure_owner", "declared_consequence"],
+          "description": "Why the system concluded what it concluded. Never derived from the execution IP alone."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "cross_border": { "const": true } }, "required": ["cross_border"] },
+          "then": {
+            "properties": { "targets": { "minItems": 1 } },
+            "description": "A cross-border action must name at least one target jurisdiction, or it cannot be audited against passport scope."
+          }
+        }
+      ]
+    }
+  }
+}

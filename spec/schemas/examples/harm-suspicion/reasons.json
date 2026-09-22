@@ -1,0 +1,5 @@
+{
+  "records-a-verdict": "Suspicion is not guilt. There is deliberately no field in which a reporter can record a finding.",
+  "anonymous-reporter": "Accusation is a consequential act and must itself be attributable. There is no anonymous path into this object.",
+  "severity-out-of-range": "Severity is 0-4 (INFORMATIONAL..CRITICAL), defined by the policy bundle."
+}

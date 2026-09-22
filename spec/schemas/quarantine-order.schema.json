@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/quarantine-order.schema.json",
+  "title": "UAI Quarantine Order",
+  "description": "A preventive, reversible, time-boxed and SCOPED restriction. It is not a finding of fault. The schema enforces the time box and the scope so that a quarantine cannot be issued as an open-ended sanction.",
+  "type": "object",
+  "required": ["order_id", "agent_did", "owner_did", "reason_category", "reason_text", "initiating_policy", "scope", "issued_at", "review_by", "expires_at", "signature"],
+  "properties": {
+    "order_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "owner_did": { "$ref": "common.schema.json#/$defs/did" },
+    "reason_category": { "$ref": "common.schema.json#/$defs/harmCategory" },
+    "reason_text": { "type": "string", "minLength": 1 },
+    "initiating_policy": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/policyReference" }],
+      "type": "object",
+      "required": ["version", "bundle_hash", "rule"],
+      "properties": { "rule": { "type": "string", "minLength": 1 } }
+    },
+    "triggering_suspicions": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ulid" } },
+    "evidence_commitments": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/commitment" } },
+    "scope": {
+      "type": "object",
+      "required": ["agent_capabilities_suspended", "owner_restrictions", "other_agents_of_owner"],
+      "properties": {
+        "agent_capabilities_suspended": { "type": "array", "items": { "type": "string" } },
+        "agent_capabilities_retained": { "type": "array", "items": { "type": "string" } },
+        "passports_suspended": { "type": "array", "items": { "type": "string" } },
+        "owner_restrictions": {
+          "type": "array",
+          "items": { "enum": ["REGISTER_HIGH_RISK_AGENT", "REQUEST_PASSPORT", "ELEVATE_CAPABILITY"] },
+          "description": "Narrow and forward-looking. Restrictions block NEW high-risk registrations, passports and capability elevation."
+        },
+        "other_agents_of_owner": {
+          "const": "UNAFFECTED",
+          "description": "A quarantine must never cascade into disabling the owner's other agents that have no link to the incident."
+        }
+      }
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "review_by": { "type": "string", "format": "date-time" },
+    "expires_at": {
+      "type": "string", "format": "date-time",
+      "description": "Mandatory. If the case has not advanced by this time the agent returns to ACTIVE automatically: inaction must not become a sanction."
+    },
+    "case_id": { "type": "string", "pattern": "^UAI-INC-[0-9]{6}$" },
+    "signature": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/signature" }],
+      "properties": { "domain": { "const": "UAI-v1:quarantine" } }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "malformed-inclusion-proof": "Audit path entries must be sha256 digests in the UAI wire form.",
+  "empty-checkpoint": "A receipt cannot reference a checkpoint of size zero: there would be no tree to prove inclusion in."
+}

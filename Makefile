@@ -51,6 +51,25 @@ build: ## Build everything
 test: ## Run Go unit tests
 	$(GO) test ./... -count=1
 
+.PHONY: conformance
+conformance: ## Run the normative vectors, schemas and API checks
+	$(GO) run ./tools/uai-conformance
+
+.PHONY: vectors
+vectors: ## Regenerate the conformance vectors (maintainers only; must be a no-op)
+	$(GO) run ./tools/uai-vectors
+
+.PHONY: vectors-check
+vectors-check: ## Fail if regenerating the vectors would change them
+	@$(GO) run ./tools/uai-vectors >/dev/null
+	@if ! git diff --quiet -- spec/test-vectors; then \
+		echo "spec/test-vectors changed after regeneration:"; \
+		git --no-pager diff --stat -- spec/test-vectors; \
+		echo "A vector diff means the protocol changed. Commit it deliberately."; \
+		exit 1; \
+	fi
+	@echo "vectors are reproducible"
+
 .PHONY: invariants
 invariants: ## Assert that the forbidden operations fail (INV-001..010)
 	@psql "$(PG_DSN)" -v ON_ERROR_STOP=1 -f test/invariants/invariants.sql 2>&1 \
@@ -67,7 +86,7 @@ fmt: ## Format Go sources
 	$(GO) fmt ./...
 
 .PHONY: check
-check: build lint test ## Everything that must pass before a commit
+check: build lint test conformance vectors-check ## Everything that must pass before a commit
 
 ## ---------- knowledge graph ----------
 .PHONY: graph

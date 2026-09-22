@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/transparency-receipt.schema.json",
+  "title": "UAI Transparency Receipt",
+  "description": "Proof that a signed statement is at a given index of the append-only log. A statement plus its receipt is self-contained: verifying it needs no UAI service, which is the point — evidence must survive the disappearance of its issuer.",
+  "type": "object",
+  "required": ["log_origin", "log_index", "leaf_hash", "checkpoint", "inclusion_proof", "log_signature"],
+  "properties": {
+    "log_origin": { "type": "string", "minLength": 1, "examples": ["uai.world/log/1"] },
+    "log_index": { "type": "integer", "minimum": 0 },
+    "leaf_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+    "checkpoint": {
+      "type": "object",
+      "required": ["size", "root", "timestamp"],
+      "properties": {
+        "size": { "type": "integer", "minimum": 1 },
+        "root": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "inclusion_proof": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+      "description": "RFC 6962 audit path, root-ward. May be empty for a single-leaf tree."
+    },
+    "log_signature": { "$ref": "common.schema.json#/$defs/signature" },
+    "witness_signatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["witness", "value"],
+        "properties": { "witness": { "type": "string" }, "value": { "type": "string" } }
+      },
+      "description": "Independent co-signatures. Witnesses are what makes a split view impossible to hide: showing two verifiers different histories requires witness signatures over inconsistent checkpoints, and an honest witness refuses."
+    },
+    "anchor": {
+      "type": "object",
+      "required": ["chain_id", "tx", "block"],
+      "properties": {
+        "chain_id": { "type": "integer" },
+        "tx": { "type": "string" },
+        "block": { "type": "integer" },
+        "epoch": { "type": "integer" }
+      },
+      "description": "Absent until the checkpoint is anchored on-chain. A verifier MUST be able to express VERIFIED_UNANCHORED rather than silently treating an unanchored statement as fully verified."
+    }
+  }
+}

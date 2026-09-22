@@ -1,0 +1,26 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "uai": "https://uai.world/ns/passport/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "AgentPassportCredential": {
+      "@id": "uai:AgentPassportCredential",
+      "@context": {
+        "@protected": true,
+        "owner": { "@id": "uai:owner", "@type": "@id" },
+        "allowedJurisdictions": { "@id": "uai:allowedJurisdictions", "@container": "@set" },
+        "restrictedJurisdictions": { "@id": "uai:restrictedJurisdictions", "@container": "@set" },
+        "authorizedCapabilities": { "@id": "uai:authorizedCapabilities", "@container": "@set" },
+        "capability": "uai:capability",
+        "minAssurance": "uai:minAssurance",
+        "constraints": "uai:constraints",
+        "assuranceLevel": "uai:assuranceLevel",
+        "policyVersion": "uai:policyVersion",
+        "policyBundleHash": "uai:policyBundleHash",
+        "state": "uai:state"
+      }
+    }
+  }
+}

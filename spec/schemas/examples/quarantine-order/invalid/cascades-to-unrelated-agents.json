@@ -1,0 +1,44 @@
+{
+  "order_id": "01JY8RC7A00000000000000000",
+  "agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
+  "reason_category": "UNAUTHORIZED_ACCESS",
+  "reason_text": "Action targeted infrastructure outside declared capability scope",
+  "initiating_policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "rule": "gasc.quarantine.unauthorized_access_high"
+  },
+  "triggering_suspicions": [
+    "01JY8RC2M00000000000000000"
+  ],
+  "evidence_commitments": [
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "scope": {
+    "agent_capabilities_suspended": [
+      "cloud.securitygroup.update"
+    ],
+    "agent_capabilities_retained": [
+      "crm.customer.read"
+    ],
+    "passports_suspended": [
+      "urn:uai:passport:01JY8RB1Q00000000000000000"
+    ],
+    "owner_restrictions": [
+      "REGISTER_HIGH_RISK_AGENT",
+      "REQUEST_PASSPORT"
+    ],
+    "other_agents_of_owner": "SUSPENDED"
+  },
+  "issued_at": "2026-09-22T14:07:14Z",
+  "review_by": "2026-09-29T14:07:14Z",
+  "expires_at": "2026-10-22T14:07:14Z",
+  "case_id": "UAI-INC-000041",
+  "signature": {
+    "alg": "EdDSA",
+    "kid": "did:web:quarantine.uai.world#key-1",
+    "domain": "UAI-v1:quarantine",
+    "value": "zSigAbc"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/action-attestation.schema.json",
+  "title": "UAI Action Attestation",
+  "description": "A signed statement that an identity CLAIMS to have performed an action, ordered in a per-agent hash chain and committed to an append-only log. It is not proof that the external side effects occurred: proving that requires the target system to counter-attest.",
+  "type": "object",
+  "required": [
+    "uai_version", "event_id", "agent_did", "owner_did", "timestamp", "nonce",
+    "action", "purpose", "jurisdiction", "policy", "outcome", "sequence", "signature"
+  ],
+  "properties": {
+    "uai_version": { "const": "0.1" },
+    "event_id": { "$ref": "common.schema.json#/$defs/ulid" },
+    "agent_did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "owner_did": { "$ref": "common.schema.json#/$defs/did" },
+    "runtime_identity": {
+      "type": "string",
+      "pattern": "^spiffe://",
+      "description": "SPIFFE ID of the executing instance. MUST match the SVID presented on the connection: persistent identity answers who, runtime identity answers whether the running process is that identity."
+    },
+    "timestamp": {
+      "type": "string", "format": "date-time",
+      "description": "Self-asserted and UNTRUSTED. Ordering authority is the transparency log index; a large divergence is itself a signal."
+    },
+    "nonce": { "type": "string", "pattern": "^[0-9a-f]{32,}$" },
+    "action": {
+      "type": "object",
+      "required": ["type", "capability"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "resource": { "type": "string" },
+        "capability": { "type": "string", "minLength": 1 },
+        "risk_class": { "$ref": "common.schema.json#/$defs/riskClass" }
+      }
+    },
+    "purpose": { "type": "string", "minLength": 1 },
+    "jurisdiction": { "$ref": "common.schema.json#/$defs/jurisdictionContext" },
+    "policy": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/policyReference" }],
+      "type": "object",
+      "required": ["version", "bundle_hash", "decision_id", "decision"],
+      "properties": {
+        "decision_id": { "$ref": "common.schema.json#/$defs/ulid" },
+        "decision": { "enum": ["ALLOW", "ALLOW_WITH_MONITORING", "REQUIRE_HUMAN_APPROVAL", "DENY", "QUARANTINE"] },
+        "rules_fired": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "passport": {
+      "type": "object",
+      "required": ["required"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "credential_hash": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "status_at_decision": { "enum": ["VALID", "EXPIRED", "SUSPENDED", "QUARANTINED", "REVOKED", "DENIED"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+          "then": { "required": ["required", "credential_hash", "status_at_decision"] }
+        }
+      ]
+    },
+    "input_commitment": { "$ref": "common.schema.json#/$defs/commitment" },
+    "output_commitment": { "$ref": "common.schema.json#/$defs/commitment" },
+    "outcome": {
+      "enum": ["SUCCESS", "FAILURE", "PARTIAL", "ABORTED_BY_POLICY"],
+      "description": "Failures MUST be attested too. An accountability log that records only successes is an advertisement."
+    },
+    "previous_event_hash": {
+      "$ref": "common.schema.json#/$defs/sha256Digest",
+      "description": "Hash of the predecessor attestation. Two events sharing a predecessor is a fork, which has no benign cause."
+    },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "signature": { "$ref": "common.schema.json#/$defs/signature" }
+  },
+  "allOf": [
+    {
+      "description": "INV-002: an action is never attributed by a string identifier alone.",
+      "properties": { "signature": { "properties": { "domain": { "const": "UAI-v1:attestation" } } } }
+    }
+  ]
+}

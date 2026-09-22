@@ -1,0 +1,41 @@
+{
+  "suspicion_id": "01JY8RC2M00000000000000000",
+  "reported_at": "2026-09-22T14:07:11Z",
+  "reporter": {
+    "did": "did:web:monitor.acme-robotics.example",
+    "type": "AUTOMATED_GUARDRAIL",
+    "credential_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "subject": {
+    "agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+    "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000"
+  },
+  "related_events": [
+    "01JY8RA3C7K2V9M0QW4T6Z8XPD"
+  ],
+  "harm_categories": [
+    {
+      "category": "UNAUTHORIZED_ACCESS",
+      "severity": 9
+    }
+  ],
+  "guardrail": {
+    "rule": "gasc.infra.unregistered_target",
+    "policy_version": "GASC-2027.4",
+    "bundle_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "evidence_commitments": [
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "confidence": 0.71,
+  "affected_jurisdictions": [
+    "DE"
+  ],
+  "signature": {
+    "alg": "EdDSA",
+    "kid": "did:web:monitor.acme-robotics.example#key-1",
+    "domain": "UAI-v1:quarantine",
+    "value": "zSigAbc"
+  }
+}

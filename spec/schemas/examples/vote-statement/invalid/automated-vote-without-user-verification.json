@@ -1,0 +1,27 @@
+{
+  "vote_id": "01JY8RE5000000000000000000",
+  "case_id": "UAI-INC-000041",
+  "proposal": "PERMANENT_REVOCATION",
+  "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "threshold": "4-of-5"
+  },
+  "delegate": {
+    "did": "did:uai:delegate:01JY8R9ZD00000000000000000",
+    "country": "DE",
+    "credential_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "vote": "YES",
+  "rationale_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "cast_at": "2026-09-25T10:14:22Z",
+  "nonce": "b17ec3a94f2d8016b17ec3a94f2d8016",
+  "assertion": {
+    "authenticator_data": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2M",
+    "client_data_json": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0In0",
+    "signature": "MEUCIQDabc",
+    "user_verified": false
+  }
+}

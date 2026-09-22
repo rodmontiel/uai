@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uai.world/schemas/v0.1/verify-response.schema.json",
+  "title": "UAI Universal Verify Response",
+  "description": "The response of GET /v1/verify/{uai_id}. Unauthenticated and cacheable. Always 200 with an explicit status, including for unknown identifiers: silence is never evidence of anything.",
+  "type": "object",
+  "required": ["identity", "verified", "status", "revoked", "quarantined", "as_of"],
+  "properties": {
+    "identity": { "$ref": "common.schema.json#/$defs/uaiId" },
+    "did": { "$ref": "common.schema.json#/$defs/uaiDid" },
+    "verified": { "type": "boolean" },
+    "status": {
+      "enum": ["UAI_VERIFIED", "UAI_REGISTERED", "UAI_UNVERIFIED", "UAI_QUARANTINED", "UAI_REVOKED"],
+      "description": "UAI_UNVERIFIED means no verifiable identity was presented. It is NOT an assertion that the agent is malicious; the correct reading is that its actions cannot be cryptographically attributed."
+    },
+    "assurance_level": { "$ref": "common.schema.json#/$defs/assuranceLevel" },
+    "owner_verified": { "type": "boolean" },
+    "organization": { "type": "string" },
+    "passport_status": { "enum": ["VALID", "EXPIRED", "SUSPENDED", "QUARANTINED", "REVOKED", "DENIED", "NONE"] },
+    "credential_valid": { "type": "boolean" },
+    "quarantined": { "type": "boolean" },
+    "revoked": { "type": "boolean" },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "primary_jurisdiction": { "$ref": "common.schema.json#/$defs/isoCountry" },
+    "policy_version": { "type": "string" },
+    "last_transparency_checkpoint": {
+      "type": "object",
+      "properties": {
+        "log_origin": { "type": "string" },
+        "size": { "type": "integer" },
+        "root": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "last_anchor": {
+      "type": "object",
+      "properties": {
+        "chain_id": { "type": "integer" },
+        "tx": { "type": "string" },
+        "block": { "type": "integer" }
+      }
+    },
+    "proof": {
+      "type": "string",
+      "format": "uri",
+      "description": "A verifier that reads only this JSON is trusting UAI. A verifier that follows this link is not. The difference is documented rather than hidden."
+    },
+    "note": { "type": "string" },
+    "as_of": { "type": "string", "format": "date-time" },
+    "cache_max_age": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "description": "A revoked or quarantined identity is never reported as verified.",
+      "if": { "anyOf": [ { "properties": { "revoked": { "const": true } }, "required": ["revoked"] },
+                          { "properties": { "quarantined": { "const": true } }, "required": ["quarantined"] } ] },
+      "then": { "properties": { "verified": { "const": false } } }
+    }
+  ]
+}

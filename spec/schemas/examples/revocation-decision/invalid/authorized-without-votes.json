@@ -1,0 +1,21 @@
+{
+  "decision_id": "01JY8RF60000000000000000ZZ",
+  "case_id": "UAI-INC-000041",
+  "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "proposal": "PERMANENT_REVOCATION",
+  "policy": {
+    "version": "GASC-2027.4",
+    "bundle_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "threshold": "4-of-5"
+  },
+  "evidence_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "tally": {
+    "YES": 4,
+    "NO": 1,
+    "PENDING": 0
+  },
+  "votes": [],
+  "authorized_at": "2026-09-25T11:02:00Z",
+  "governance_proof": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status": "AUTHORIZED"
+}
