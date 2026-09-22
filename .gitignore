@@ -1,0 +1,25 @@
+# deps
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# env
+.env
+.env.local
+*.local
+
+# build
+dist/
+build/
+*.log
+
+# graphify (regenerable knowledge graph — rebuild with: graphify .)
+graphify-out/
+raw/
+
+# os / editor
+.DS_Store
+.idea/
+*.swp
