@@ -47,6 +47,10 @@ migrate-down: ## Roll back the most recent migration
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations -steps 1 down
 
 ## ---------- quality ----------
+.PHONY: run-gateway
+run-gateway: ## Run the API gateway against the local stack
+	$(GO) run ./services/gateway -dsn "$(PG_DSN)" -addr :8080 -scheme http
+
 .PHONY: build
 build: ## Build everything
 	$(GO) build ./...
@@ -85,7 +89,7 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0002_governance.up.sql
 	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/seed/0001_jurisdictions.up.sql
 	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
-		$(GO) test ./internal/store/... -count=1 -race
+		$(GO) test ./internal/store/... ./internal/api/... -count=1 -race
 	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
 		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
 	@docker rm -f uai-pg-test >/dev/null

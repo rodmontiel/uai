@@ -37,7 +37,13 @@ declarado existe en el repo.
 - **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
   `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
   (checkpoints, receipts, co-firma de witnesses).
-- Fases 4, 6–12: sin empezar. La 4 (servicios backend) es la siguiente.
+- **Fase 4 🟡** — `internal/store` (persistencia con cadena de eventos atómica), `internal/api`
+  (problem+json, middleware de PoP e idempotencia, handlers de attestation y verificación),
+  `services/gateway`. Faltan registro, binding y emisión de credenciales.
+- Fases 6–12: sin empezar.
+
+`make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
+`-race` más las 35 aserciones de invariantes.
 
 `make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 

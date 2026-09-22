@@ -164,6 +164,31 @@ auditable and reproducible rather than an opaque denial.
 Attestation submission is idempotent on `event_id` in addition, which is what makes offline
 buffer flushes safe to retry ([§10.5](06-action-attestation.md)).
 
+### 22.6.1 A retry MUST be re-signed
+
+Idempotency and proof of possession interact in a way that is easy to get wrong, so it is
+stated normatively:
+
+> A retry reuses the `Idempotency-Key` and the request body, and carries a **fresh signature
+> with a fresh `UAI-Nonce`**.
+
+Resending the byte-identical request reuses the nonce, and a nonce is single-use by
+construction: the gateway answers `401 UAI_REPLAY_DETECTED`. That is correct behavior, not a
+defect — a replay cache that made exceptions for requests carrying a familiar header would not
+be a replay cache. The idempotency key still does its job, because it is matched on the key and
+the body, neither of which changes when the request is re-signed.
+
+The two mechanisms answer different questions and are deliberately not merged:
+
+| | Answers | Scope |
+|---|---|---|
+| `UAI-Nonce` | "Have I seen this exact signed message before?" | One transmission |
+| `Idempotency-Key` | "Have I already performed this logical operation?" | One logical request, across retries |
+
+Order of enforcement at the gateway is body capture, then proof of possession, then the
+idempotency claim. Claiming the key first would let an unauthenticated caller burn another
+party's keys by guessing them.
+
 ## 22.7 Versioning and compatibility
 
 - URL-versioned (`/v1/`) for the REST surface; the wire objects carry `uai_version` independently,

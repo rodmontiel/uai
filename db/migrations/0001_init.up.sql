@@ -79,11 +79,15 @@ CREATE TYPE proposal_state AS ENUM ('DRAFT', 'VOTING', 'AUTHORIZED', 'REJECTED',
 CREATE DOMAIN sha256_digest AS text
     CHECK (VALUE ~ '^sha256:[0-9a-f]{64}$');
 
+-- The leading [0-7] is not cosmetic: a ULID's first character encodes only two
+-- bits, so anything above '7' overflows 128 bits and pkg/uaiid rejects it.
+-- Without it the database would accept identifiers the protocol treats as
+-- malformed, and the two layers would disagree about what exists.
 CREATE DOMAIN uai_id AS text
-    CHECK (VALUE ~ '^uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}$');
+    CHECK (VALUE ~ '^uai:(agent|owner|org|delegate|country):[0-7][0-9A-HJKMNP-TV-Z]{25}$');
 
 CREATE DOMAIN uai_did AS text
-    CHECK (VALUE ~ '^did:(uai:(agent|owner|org|delegate|country):[0-9A-HJKMNP-TV-Z]{26}|web:[A-Za-z0-9._%-]+(:[A-Za-z0-9._%-]+)*)$');
+    CHECK (VALUE ~ '^did:(uai:(agent|owner|org|delegate|country):[0-7][0-9A-HJKMNP-TV-Z]{25}|web:[A-Za-z0-9._%-]+(:[A-Za-z0-9._%-]+)*)$');
 
 CREATE DOMAIN iso_country AS char(2)
     CHECK (VALUE ~ '^[A-Z]{2}$');

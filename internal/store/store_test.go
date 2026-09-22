@@ -62,7 +62,9 @@ func init() {
 //     and a racy counter produces duplicate identifiers, which surfaces as a
 //     primary-key violation that looks like a bug in the code under test.
 func ulid(prefix string) string {
-	return fmt.Sprintf("%s%025d", strings.ToUpper(prefix), seq.Add(1))
+	// The first character must be <= '7': a ULID's leading character encodes
+	// only two bits, so anything higher overflows 128 bits and is rejected.
+	return fmt.Sprintf("0%s%024d", strings.ToUpper(prefix), seq.Add(1))
 }
 
 func digest(b byte) string { return "sha256:" + strings.Repeat(string(rune('a'+b%6)), 64) }

@@ -433,7 +433,11 @@ CREATE TABLE idempotency_keys (
     endpoint        text NOT NULL,
     request_hash    sha256_digest NOT NULL,
     response_status integer,
-    response_body   jsonb,
+    -- text, not jsonb: an idempotent replay must return the EXACT bytes of the
+    -- original response. jsonb normalizes key order and whitespace, so a client
+    -- that hashed or signed the first response would see a different document
+    -- on retry.
+    response_body   text,
     created_at      timestamptz NOT NULL DEFAULT now(),
     expires_at      timestamptz NOT NULL,
     PRIMARY KEY (key, endpoint)

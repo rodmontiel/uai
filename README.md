@@ -53,7 +53,7 @@ when its own stated deliverable exists in this repository.
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
 | 2 Protocol | ✅ | 10 JSON Schemas with 40 examples, 3 JSON-LD contexts, OpenAPI 3.1 (21 paths), 10 published vector sets, `uai-conformance` |
 | 3 Data | ✅ | PostgreSQL schema, 34 tables, integrity guards, 35 executable invariant assertions |
-| 4 Backend core | ⬜ | identity, registry, credential, action services |
+| 4 Backend core | 🟡 | `internal/store` (chain-safe persistence), `internal/api` (problem+json, PoP and idempotency middleware, attestation and verification handlers), `services/gateway`. Registration, binding and credential issuance pending |
 | 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` (checkpoints, receipts, witness co-signing) |
 | 6–12 | ⬜ | Policy engine, contracts, frontend, SDKs, demo, security, deployment |
 

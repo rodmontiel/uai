@@ -221,3 +221,12 @@ func deref(s *string) string {
 	}
 	return *s
 }
+
+// AgentByDID loads an agent by its DID.
+func (db *DB) AgentByDID(ctx context.Context, did string) (Agent, error) {
+	var uaiID string
+	if err := db.pool.QueryRow(ctx, `SELECT uai_id FROM agents WHERE did = $1`, did).Scan(&uaiID); err != nil {
+		return Agent{}, classify(err)
+	}
+	return db.AgentByUAIID(ctx, uaiID)
+}
