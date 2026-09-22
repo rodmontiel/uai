@@ -57,10 +57,10 @@ invariants: ## Assert that the forbidden operations fail (INV-001..010)
 		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
 
 .PHONY: lint
-lint: ## Static analysis
+lint: ## Static analysis and formatting check
 	$(GO) vet ./...
-	@test -z "$$($(GO) run mvdan.cc/gofumpt@latest -l . 2>/dev/null || gofmt -l .)" || \
-		{ echo "unformatted files:"; gofmt -l .; exit 1; }
+	@unformatted=$$(gofmt -l .); \
+		test -z "$$unformatted" || { echo "unformatted files:"; echo "$$unformatted"; exit 1; }
 
 .PHONY: fmt
 fmt: ## Format Go sources
