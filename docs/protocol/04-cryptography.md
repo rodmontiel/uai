@@ -215,8 +215,15 @@ compromising the operational root (P6).
 
 ## 7.9 Test vectors (normative for conformance)
 
-`spec/test-vectors/` in this repository contains, for each item below, input, intermediate
-canonical bytes, and expected output, so an independent implementation can self-check:
+`spec/test-vectors/` will carry, for each item below, input, intermediate canonical bytes, and
+expected output, so an independent implementation can self-check.
+
+> **Status: not yet published.** The vectors are the deliverable of Phase 2
+> ([roadmap](19-roadmap.md)) and the directory is currently empty. `pkg/uaicrypto` implements
+> and tests every construction below, but until the vectors are published in this repository a
+> third party cannot verify an independent implementation against them — which is the whole
+> point of this section, and the reason Phase 2 gates the claim that UAI is implementable
+> without running this code.
 
 | Vector | Covers |
 |---|---|

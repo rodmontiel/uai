@@ -45,12 +45,22 @@ must implement are [identity](docs/protocol/03-identity.md) and
 Implementation is proceeding phase by phase (see
 [roadmap](docs/protocol/19-roadmap.md)). What exists and runs today:
 
+Phase numbering follows [the roadmap](docs/protocol/19-roadmap.md) exactly. A phase is ✅ only
+when its own stated deliverable exists in this repository.
+
 | Phase | Status | What |
 |---|---|---|
-| 0–1 Definition & architecture | ✅ | Full protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
-| 2 Protocol core | 🟡 | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` implemented and tested; JSON Schemas and published vectors pending |
+| 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
+| 2 Protocol | ⬜ **not started** | JSON Schemas, JSON-LD contexts, OpenAPI, published test vectors, `uai-conformance`. `spec/` is empty |
 | 3 Data | ✅ | PostgreSQL schema, 34 tables, integrity guards, 35 executable invariant assertions |
-| 4–12 | ⬜ | Services, policy engine, contracts, frontend, SDKs, demo |
+| 4 Backend core | ⬜ | identity, registry, credential, action services |
+| 5 Cryptography | 🟡 **partial** | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle` implemented and tested. Proof of possession, transparency receipts and key rotation pending |
+| 6–12 | ⬜ | Policy engine, contracts, frontend, SDKs, demo, security, deployment |
+
+Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
+anything else could be built. That ordering has a cost worth naming: **the crypto core is
+tested against itself, not against published vectors.** Until Phase 2 lands, nobody outside
+this repository can check an independent implementation for conformance.
 
 ```bash
 make test        # Go unit tests (identifiers, crypto suite, Merkle log)
