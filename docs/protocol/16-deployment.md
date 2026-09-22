@@ -95,39 +95,51 @@ the data its own grants allow, and its actions are attributable to its own SVID.
 
 ## 23.4 Local development — Docker Compose first
 
-```yaml
-# deploy/compose/docker-compose.yml (shape)
-services:
-  postgres:      { image: postgres:16 }
-  redis:         { image: redis:7 }
-  nats:          { image: nats:2-alpine, command: "-js" }
-  minio:         { image: minio/minio }
-  vault:         { image: hashicorp/vault, profiles: [full] }
-  spire-server:  { image: ghcr.io/spiffe/spire-server }
-  spire-agent:   { image: ghcr.io/spiffe/spire-agent }
-  opa:           { image: openpolicyagent/opa }
-  besu-1..4:     { image: hyperledger/besu, command: QBFT }
-  uai-gateway: …
-  uai-identity: …            # one container per service
-  uai-transparency: …
-  uai-witness-1: …
-  uai-witness-2: …
-  uai-ledger-writer: …
-  uai-web:       { build: ./web }
-  otel-collector / prometheus / grafana / loki: { profiles: [observability] }
+The compose file grows phase by phase, and it only ever contains services that exist. A stack
+declaring containers for unbuilt services would fail on the first `up` and would misrepresent
+what the project actually runs.
+
+**Shipping today** (`deploy/compose/docker-compose.yml`) — the infrastructure the implemented
+phases need:
+
+```text
+postgres   PostgreSQL 16        schema + invariant guards (Phase 3)
+redis      nonce replay cache, rate limits
+nats       JetStream, durable inter-service events
+minio      S3-compatible object store for the Evidence Vault
+opa        policy decision engine, mounted against policy/
 ```
 
-Profiles keep the default path light: `docker compose up` brings the MVP; `--profile full` adds
-Vault, SPIRE in full mode and the observability stack.
+**Added as the phases land**, in this order:
 
-Target: **one command from clone to a working demo**, because a protocol nobody can run locally
-is a protocol nobody implements.
+| Added in | Services |
+|---|---|
+| Phase 4 | `uai-gateway`, `uai-identity`, `uai-registry`, `uai-credential`, `uai-action` |
+| Phase 6 | `uai-policy` (OPA embedded rather than sidecar) |
+| Phase 7 | `besu-1..4` (QBFT validators), `uai-ledger-writer`, `uai-transparency`, `witness-1`, `witness-2` |
+| Phase 8 | `uai-web` |
+| Phase 12 | `spire-server`, `spire-agent`, full observability profile |
+
+Profiles keep the default path light: `docker compose up` brings what exists; `--profile full`
+will add Vault, SPIRE and the observability stack once Phase 12 introduces them.
+
+### 23.4.1 Make targets
+
+The Makefile follows the same rule — a target exists only when it works:
 
 ```bash
-make dev        # compose up + migrate + seed + deploy contracts + build policy bundle
-make demo       # run the ACME end-to-end scenario
-make verify     # run conformance vectors against the running stack
+make up          # start the infrastructure containers
+make migrate     # apply the schema
+make dev         # up + migrate
+make test        # Go unit tests
+make invariants  # assert that the forbidden operations fail
 ```
+
+`make demo` (the ACME end-to-end scenario) and `make verify` (conformance vectors against a
+running stack) arrive with Phases 10 and 2 respectively. **The "one command from clone to a
+working demo" goal is a Phase 10 acceptance criterion, not a present-tense claim** — a protocol
+nobody can run locally is a protocol nobody implements, which is why it is an explicit gate
+rather than an aspiration.
 
 ## 23.5 Production — Kubernetes + SPIRE
 

@@ -133,4 +133,4 @@ part of the demo.
 | Attestation throughput | ≥ 2 000/s per action-service instance |
 | Checkpoint interval | ≤ 10 s |
 | Anchor lag | ≤ 60 s |
-| Cold start (`make dev` → demo passing) | ≤ 5 min on a laptop |
+| Cold start (`make dev` -> demo passing) | <= 5 min on a laptop, once Phase 10 lands |
