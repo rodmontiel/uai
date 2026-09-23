@@ -55,16 +55,24 @@ declarado existe en el repo.
   **El bundle commiteado trae su manifest y sus firmas; las claves de gobernanza no.** Editar
   una regla o un umbral rompe `make policy-verify` hasta que alguien con esas claves lo vuelva
   a firmar. La política no la cambia quien tiene acceso de escritura al repo.
-- **Fase 7 🟡** — los 7 contratos en `contracts/src/`, compilados con warnings denegados y
-  linter limpio, con 31 tests Foundry incluyendo fuzzing. Su criterio del roadmap
-  (`AgentRevoked` exige una prueba de gobernanza on-chain) corre como test. Falta el
-  ledger-writer y el pipeline de anclaje.
+- **Fase 7 ✅** — los 7 contratos (`contracts/src/`, 31 tests Foundry con fuzzing), el servicio
+  de transparencia (`internal/translog`: log persistente, recibos SCITT, co-firma de witnesses),
+  el cliente de cadena (`internal/chain`, JSON-RPC mínimo) y el ledger-writer
+  (`services/ledger-writer`). El pipeline se prueba contra una EVM real con `anvil`.
 
-  **INV-007/008 es un gate del build, no una revisión de código.** `test/onchain` lee las ABIs
-  commiteadas en `spec/contracts/` y rechaza cualquier parámetro que no sea `bytes32`, `uintN`,
-  `intN`, `bool`, `address` o tuplas de eso. Un `string` o un `bytes` dinámico puede cargar un
-  prompt o un email; la única forma confiable de mantenerlos fuera de la cadena es que no se
-  puedan escribir.
+  **INV-007/008 es un gate del build**, no una revisión de código: `test/onchain` lee las ABIs
+  commiteadas en `spec/contracts/` y rechaza cualquier parámetro que no sea de ancho fijo.
+
+  **El adaptador `noop-dev` no fabrica anclas.** Devuelve un error, no un hash plausible: un
+  build de desarrollo que inventara una transacción haría que los recibos afirmen una
+  durabilidad que nadie proveyó, y el reclamo sería indistinguible de uno real hasta que
+  alguien fuera a buscar esa transacción.
+
+  **Los witnesses locales dan el mecanismo, no la independencia.** La detección de vista
+  dividida se apoya en que los witnesses los opere gente que no se coludiría con el log, y dos
+  goroutines no son eso. §18.3 da 2 locales para el MVP y ≥3 operadores independientes en
+  producción; el mecanismo está implementado y testeado para lo segundo.
+
 - Fases 8–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
@@ -114,6 +122,9 @@ autores angostó el protocolo sin decirlo.
     audita corre el camino liviano, quien decide carga los 33 módulos (ADR-0002).
 14. **Nada que pueda cargar contenido entra a un contrato.** No es una regla de revisión: es
     un test sobre las ABIs commiteadas. Si un parámetro no es de ancho fijo, el build falla.
-15. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+15. **Un adaptador que no publica nada tiene que PARECER que no publica nada.** Nunca devolver
+    un identificador plausible por algo que no ocurrió: la evidencia falsa es peor que la
+    evidencia ausente, porque la ausente se nota.
+16. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.

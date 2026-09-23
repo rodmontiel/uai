@@ -206,6 +206,32 @@ tuple of those. A `string` or a dynamic `bytes` could carry a prompt or an email
 the only reliable way to keep those off a chain is to make them unspellable — so INV-007/008 is
 a build gate rather than a code-review habit.
 
+### Evidence that survives its issuer
+
+Every attested action is registered in a transparency log and comes back with a **receipt**: the
+leaf index, an inclusion proof, a signed checkpoint and witness co-signatures. A relying party
+holding the statement, the receipt and the trust anchors verifies all of it without calling us.
+
+The log stores leaf hashes, never statements. A log that accumulated content would become the
+single thing worth attacking, and its retention would stop being cheap and lawful the moment it
+held anything about a person.
+
+Witnesses co-sign a checkpoint only after checking it extends what they already signed. That
+refusal is the mechanism: an operator showing two verifiers two histories must obtain witness
+signatures for two inconsistent checkpoints, and an honest witness cannot provide the second.
+The MVP runs two local witnesses, which provide **the mechanism but not the independence** —
+split-view detection rests on witnesses being operated by parties who would not collude with the
+log, and processes on one host are not that.
+
+Checkpoints are anchored on the consortium ledger by `uai-ledger-writer`, a separate process
+from the gateway because anchoring is a durability layer and not an admission gate: the gateway
+must keep accepting attestations while the ledger is down.
+
+The public anchor adapter ships as `noop-dev`, which **returns an error rather than a plausible
+transaction hash**. A development build that invented an anchor would make receipts claim
+durability nobody provided, and the claim would be indistinguishable from a real one until
+somebody went looking for the transaction.
+
 ## Design priorities
 
 In every trade-off, in this order:

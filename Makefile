@@ -144,6 +144,11 @@ run-gateway: $(ISSUER_KEY) ## Run the API gateway against the local stack
 $(ISSUER_KEY):
 	@$(MAKE) --no-print-directory issuer-key
 
+.PHONY: run-ledger-writer
+run-ledger-writer: ## Drain the anchor queue once against a local EVM
+	$(GO) run ./services/ledger-writer -dsn "$(PG_DSN)" -once \
+		-rpc "$(UAI_CHAIN_RPC)" -from "$(UAI_CHAIN_FROM)" -anchor-contract "$(UAI_ANCHOR_CONTRACT)"
+
 .PHONY: build
 build: ## Build everything
 	$(GO) build ./...
@@ -184,7 +189,7 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 		$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < $$f || exit 1; \
 	done
 	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
-		$(GO) test ./internal/store/... ./internal/api/... -count=1 -race
+		$(GO) test ./internal/... -count=1 -race
 	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
 		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
 	@$(CONTAINER) rm -f uai-pg-test >/dev/null

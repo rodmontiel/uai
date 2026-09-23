@@ -585,4 +585,73 @@ SELECT assert_fails('BIND', 'one SVID cannot back two runtime identities', $$
     VALUES ('rt-2', 'ag-1', 'spiffe://uai.world/agents/01JY/i/aaaa',
             'sha256:' || repeat('9', 64), now() + interval '1 hour')$$);
 
+-- ── §18 transparency log ────────────────────────────────────────────────────
+
+INSERT INTO log_entries (log_origin, log_index, leaf_hash, subject_kind, subject_id)
+VALUES ('uai.test/log/1', 0, 'sha256:' || repeat('1', 64), 'attestation', 'ev-1');
+
+SELECT assert_fails('LOG', 'a log entry cannot be edited', $$
+    UPDATE log_entries SET leaf_hash = 'sha256:' || repeat('2', 64)
+     WHERE log_origin = 'uai.test/log/1' AND log_index = 0$$);
+
+SELECT assert_fails('LOG', 'a log entry cannot be deleted', $$
+    DELETE FROM log_entries WHERE log_origin = 'uai.test/log/1'$$);
+
+SELECT assert_fails('LOG', 'the log cannot be truncated', $$
+    TRUNCATE log_entries$$);
+
+-- One statement at two indices would make an inclusion proof ambiguous about
+-- which entry it proved.
+SELECT assert_fails('LOG', 'one statement cannot occupy two indices', $$
+    INSERT INTO log_entries (log_origin, log_index, leaf_hash, subject_kind, subject_id)
+    VALUES ('uai.test/log/1', 1, 'sha256:' || repeat('1', 64), 'attestation', 'ev-2')$$);
+
+INSERT INTO log_checkpoints (log_origin, size, root, log_signature, signer_kid,
+                             witness_count, issued_at)
+VALUES ('uai.test/log/1', 1, 'sha256:' || repeat('a', 64), 'zLogSig',
+        'did:web:log.uai.world#key-1', 2, now());
+
+-- Two roots at one size IS a split view: the operator showing two verifiers
+-- different histories. The database refuses to be where that happened.
+SELECT assert_fails('LOG', 'one size cannot carry two roots', $$
+    INSERT INTO log_checkpoints (log_origin, size, root, log_signature, signer_kid,
+                                 witness_count, issued_at)
+    VALUES ('uai.test/log/1', 1, 'sha256:' || repeat('b', 64), 'zOther',
+            'did:web:log.uai.world#key-1', 2, now())$$);
+
+SELECT assert_fails('LOG', 'one root cannot be published at two sizes', $$
+    INSERT INTO log_checkpoints (log_origin, size, root, log_signature, signer_kid,
+                                 witness_count, issued_at)
+    VALUES ('uai.test/log/1', 2, 'sha256:' || repeat('a', 64), 'zOther',
+            'did:web:log.uai.world#key-1', 2, now())$$);
+
+SELECT assert_fails('LOG', 'a published checkpoint cannot be rewritten', $$
+    UPDATE log_checkpoints SET root = 'sha256:' || repeat('c', 64)
+     WHERE log_origin = 'uai.test/log/1' AND size = 1$$);
+
+SELECT assert_fails('LOG', 'a witness count cannot be inflated after the fact', $$
+    UPDATE log_checkpoints SET witness_count = 99
+     WHERE log_origin = 'uai.test/log/1' AND size = 1$$);
+
+SELECT assert_fails('LOG', 'a checkpoint cannot be deleted', $$
+    DELETE FROM log_checkpoints WHERE log_origin = 'uai.test/log/1'$$);
+
+-- Recording an anchor is the one permitted update: it adds information about an
+-- existing checkpoint and never changes what the checkpoint said.
+UPDATE log_checkpoints SET anchored_tx = '0xabc', anchored_at = now()
+ WHERE log_origin = 'uai.test/log/1' AND size = 1;
+
+SELECT assert_fails('LOG', 'an anchor cannot be replaced once recorded', $$
+    UPDATE log_checkpoints SET anchored_tx = '0xdef'
+     WHERE log_origin = 'uai.test/log/1' AND size = 1$$);
+
+DO $$
+BEGIN
+    IF (SELECT anchored_tx FROM log_checkpoints
+         WHERE log_origin = 'uai.test/log/1' AND size = 1) <> '0xabc' THEN
+        RAISE EXCEPTION 'FAIL  LOG  a checkpoint could not be anchored';
+    END IF;
+    RAISE NOTICE 'PASS  LOG  a checkpoint can be anchored exactly once';
+END $$;
+
 ROLLBACK;

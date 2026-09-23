@@ -8,6 +8,7 @@ import (
 
 	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/internal/translog"
 	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
@@ -45,7 +46,11 @@ type Server struct {
 	// PDP that permitted anything while it had no rules would be worse than
 	// one that was simply down.
 	bundle *pdp.Bundle
-	now    func() time.Time
+	// translog registers signed statements and issues receipts. Nil means the
+	// service runs without transparency: attestations still work and say so in
+	// their response, because a log outage must not force unattested execution.
+	translog *translog.Log
+	now      func() time.Time
 }
 
 // Option configures a Server.
@@ -61,6 +66,9 @@ func WithPolicyVersion(v string) Option { return func(srv *Server) { srv.policyV
 
 // WithAudience sets the registry identifier that binding statements must name.
 func WithAudience(a string) Option { return func(srv *Server) { srv.audience = a } }
+
+// WithTransparency attaches the transparency log.
+func WithTransparency(l *translog.Log) Option { return func(srv *Server) { srv.translog = l } }
 
 // WithBundle installs the verified policy bundle the PDP evaluates against.
 func WithBundle(b *pdp.Bundle) Option { return func(srv *Server) { srv.bundle = b } }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/internal/translog"
 	"github.com/rodmontiel/uai/pkg/attest"
 )
 
@@ -109,10 +110,37 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logTime := s.now().UTC()
+
+	// Register the signed statement in the transparency log and hand back the
+	// receipt. It is issued AFTER the append, because a receipt for an event
+	// the chain rejected would be evidence of something that did not happen.
+	//
+	// A log failure does not fail the attestation: §10.5 is explicit that a log
+	// outage must not force unattested execution. The action is already signed
+	// and chained; what is missing is third-party evidence, and the response
+	// says so instead of pretending.
+	var rcpt any
+	transparency := "UNLOGGED"
+	if s.translog != nil {
+		signed, err := json.Marshal(a)
+		if err == nil {
+			if got, logErr := s.translog.Append(r.Context(), signed,
+				translog.KindAttestation, a.EventID, logTime); logErr == nil {
+				rcpt = got
+				transparency = "LOGGED"
+			} else {
+				problemLog(r, "transparency log append failed", logErr)
+				transparency = "LOG_UNAVAILABLE"
+			}
+		}
+	}
+
 	WriteJSON(w, http.StatusCreated, map[string]any{
-		"event_id":   a.EventID,
-		"event_hash": eventHash,
-		"sequence":   ev.Sequence,
+		"event_id":     a.EventID,
+		"event_hash":   eventHash,
+		"transparency": transparency,
+		"receipt":      rcpt,
+		"sequence":     ev.Sequence,
 		// The log time is recorded alongside the agent's self-asserted
 		// timestamp. The asserted value is untrusted input; the log's ordering
 		// is the authority, and a large divergence is itself a signal.

@@ -175,6 +175,17 @@ consistency against what it already signed, and the refusal is itself evidence.
 is exercised end-to-end without spending money, and switching to a real public chain is a
 configuration change, not a redesign.
 
+**`noop-dev` returns an error, not an anchor.** This is the one detail of the adapter worth
+stating normatively: an adapter that publishes nowhere MUST fail, and MUST NOT return a
+plausible-looking transaction identifier. A development build that fabricated one would make
+receipts claim durability nobody provided, and the claim would be indistinguishable from a real
+one until somebody went looking for the transaction. False evidence is worse than absent
+evidence, because absent evidence is noticed.
+
+A deployment that names an adapter which is not built MUST refuse to start rather than falling
+back to `noop-dev`. Silently downgrading would leave an operator believing they publish a public
+anchor when they do not, which is exactly the belief this layer exists to make checkable.
+
 ## 18.1 Transparency service
 
 Model: **SCITT-style** — Signed Statement → registered → Transparent Statement + Receipt.

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,17 +22,22 @@ import (
 	"github.com/rodmontiel/uai/internal/keyfile"
 	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/internal/translog"
+	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
 func main() {
 	var (
-		addr      = flag.String("addr", envOr("UAI_ADDR", ":8080"), "listen address")
-		dsn       = flag.String("dsn", os.Getenv("PG_DSN"), "PostgreSQL connection string")
-		scheme    = flag.String("scheme", envOr("UAI_SCHEME", "https"), "external URL scheme used to rebuild the signed target URI")
-		issuerDID = flag.String("issuer-did", envOr("UAI_ISSUER_DID", "did:web:credentials.uai.world"), "DID of the credential issuer")
-		issuerKey = flag.String("issuer-key", envOr("UAI_ISSUER_KEY", ".keys/issuer.jwk"), "path to the issuer signing key")
-		bundleDir = flag.String("policy-bundle", envOr("UAI_POLICY_BUNDLE", "policy/gasc-2027.4"), "GASC bundle directory")
-		authority = flag.String("policy-authority", envOr("UAI_POLICY_AUTHORITY", "policy/authority.json"), "public approval set for policy bundles")
+		addr       = flag.String("addr", envOr("UAI_ADDR", ":8080"), "listen address")
+		dsn        = flag.String("dsn", os.Getenv("PG_DSN"), "PostgreSQL connection string")
+		scheme     = flag.String("scheme", envOr("UAI_SCHEME", "https"), "external URL scheme used to rebuild the signed target URI")
+		issuerDID  = flag.String("issuer-did", envOr("UAI_ISSUER_DID", "did:web:credentials.uai.world"), "DID of the credential issuer")
+		issuerKey  = flag.String("issuer-key", envOr("UAI_ISSUER_KEY", ".keys/issuer.jwk"), "path to the issuer signing key")
+		bundleDir  = flag.String("policy-bundle", envOr("UAI_POLICY_BUNDLE", "policy/gasc-2027.4"), "GASC bundle directory")
+		authority  = flag.String("policy-authority", envOr("UAI_POLICY_AUTHORITY", "policy/authority.json"), "public approval set for policy bundles")
+		logOrigin  = flag.String("log-origin", envOr("UAI_LOG_ORIGIN", "uai.world/log/1"), "transparency log origin")
+		witnessN   = flag.Int("log-witnesses", 2, "number of local witnesses (MVP; production uses independent operators)")
+		minWitness = flag.Int("log-min-witnesses", 2, "co-signatures a checkpoint needs to count as fully witnessed")
 	)
 	flag.Parse()
 
@@ -84,12 +90,39 @@ func main() {
 	// The scheme is explicit rather than inferred. A server-side request has a
 	// relative URL, and reconstructing the wrong absolute target makes every
 	// signature verify against a resource the caller never addressed.
+	// The transparency log. Its signing key is the issuer key for now: the MVP
+	// runs one process, and a separate log key would be a second secret with no
+	// second operator behind it. §23.1 splits uai-transparency-service out, and
+	// that is when the key should become its own.
+	witnesses := make([]*translog.Witness, 0, *witnessN)
+	for i := 0; i < *witnessN; i++ {
+		// Local, simulated witnesses (§18.3). They provide the MECHANISM, not
+		// the independence: split-view detection rests on witnesses being run
+		// by parties who would not collude with the log, and processes on one
+		// host are not that.
+		ws, _, wErr := uaicrypto.GenerateEd25519Signer(fmt.Sprintf("did:web:witness-%d.local#key-1", i))
+		if wErr != nil {
+			slog.Error("witness key", "err", wErr)
+			os.Exit(1)
+		}
+		witnesses = append(witnesses, translog.NewWitness(fmt.Sprintf("witness-%d", i), ws))
+	}
+	tlog, err := translog.Open(ctx, db, *logOrigin, signer,
+		translog.WithWitnesses(*minWitness, witnesses...))
+	if err != nil {
+		slog.Error("transparency log unavailable", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("transparency log open", "origin", tlog.Origin(), "size", tlog.Size(),
+		"witnesses", len(witnesses), "min_witnesses", *minWitness)
+
 	srv := &http.Server{
 		Addr: *addr,
 		Handler: api.NewServer(db,
 			api.WithScheme(*scheme),
 			api.WithIssuer(*issuerDID, signer),
 			api.WithBundle(bundle),
+			api.WithTransparency(tlog),
 		).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,

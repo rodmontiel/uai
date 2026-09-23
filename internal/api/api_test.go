@@ -19,8 +19,10 @@ import (
 	"github.com/rodmontiel/uai/internal/api"
 	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/internal/translog"
 	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/pop"
+	"github.com/rodmontiel/uai/pkg/receipt"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
@@ -49,13 +51,16 @@ func nonce() string {
 }
 
 type env struct {
-	db      *store.DB
-	srv     http.Handler
-	agent   store.Agent
-	signer  uaicrypto.Signer
-	ownerID string
-	pdpPub  any
-	bundle  *pdp.Bundle
+	db         *store.DB
+	srv        http.Handler
+	agent      store.Agent
+	signer     uaicrypto.Signer
+	ownerID    string
+	pdpPub     any
+	bundle     *pdp.Bundle
+	tlog       *translog.Log
+	logPub     any
+	witnessPub any
 }
 
 func setup(t *testing.T) *env {
@@ -129,10 +134,25 @@ func setup(t *testing.T) *env {
 	if err != nil {
 		t.Fatalf("the committed bundle must load: %v", err)
 	}
+	logSigner, logPub, err := uaicrypto.GenerateEd25519Signer("did:web:log.uai.test#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wSigner, wPub, err := uaicrypto.GenerateEd25519Signer("did:web:witness-0.uai.test#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	witness := translog.NewWitness("witness-0", wSigner)
+	tlog, err := translog.Open(ctx, db, "uai.test/log/"+ulid("L"), logSigner,
+		translog.WithWitnesses(1, witness))
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := api.NewServer(db, api.WithScheme("http"),
-		api.WithIssuer("did:web:pdp.uai.test", issuer), api.WithBundle(bundle))
+		api.WithIssuer("did:web:pdp.uai.test", issuer), api.WithBundle(bundle),
+		api.WithTransparency(tlog))
 	return &env{db: db, srv: srv.Routes(), agent: agent, signer: signer, ownerID: ownerID,
-		pdpPub: issuerPub, bundle: bundle}
+		pdpPub: issuerPub, bundle: bundle, tlog: tlog, logPub: logPub, witnessPub: wPub}
 }
 
 func b64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
@@ -480,5 +500,62 @@ func TestIdempotencyKeyRequired(t *testing.T) {
 	e.srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest || problemTitle(t, rec) != "UAI_IDEMPOTENCY_KEY_REQUIRED" {
 		t.Fatalf("status %d, title %s", rec.Code, problemTitle(t, rec))
+	}
+}
+
+// TestAttestationGetsATransparencyReceipt: the response carries evidence a
+// third party can check without asking us anything (§18.1).
+func TestAttestationGetsATransparencyReceipt(t *testing.T) {
+	e := setup(t)
+	head, err := e.db.ChainHead(context.Background(), e.agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := e.attestation(t, head.Hash, head.Sequence+1)
+	rec := e.post(t, a, "idem-"+ulid("I"))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("attest: %d %s", rec.Code, rec.Body)
+	}
+	var out struct {
+		Transparency string          `json:"transparency"`
+		Receipt      receipt.Receipt `json:"receipt"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Transparency != "LOGGED" {
+		t.Fatalf("transparency = %q, want LOGGED", out.Transparency)
+	}
+
+	// The statement a verifier holds is the signed attestation itself.
+	statement, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchors := receipt.TrustAnchors{
+		LogKeys:      map[string]any{"did:web:log.uai.test#key-1": e.logPub},
+		WitnessKeys:  map[string]any{"witness-0": e.witnessPub},
+		MinWitnesses: 1,
+	}
+	status, err := receipt.Verify(out.Receipt, statement, anchors)
+	if err != nil {
+		t.Fatalf("the receipt must verify offline: %v", err)
+	}
+	// No anchor yet: the ledger writer has not run. VERIFIED_UNANCHORED is the
+	// strongest truthful answer in that window, and claiming VERIFIED would be
+	// asserting durability nobody has provided.
+	if status != receipt.StatusVerifiedUnanchored {
+		t.Errorf("status = %s, want VERIFIED_UNANCHORED", status)
+	}
+
+	// And it is persisted, so /v1/actions/{id} can hand it back later.
+	var stored int
+	if err := e.db.Pool().QueryRow(context.Background(),
+		`SELECT count(*) FROM transparency_receipts WHERE subject_id = $1`, a.EventID).
+		Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != 1 {
+		t.Errorf("%d receipts stored for %s, want 1", stored, a.EventID)
 	}
 }
