@@ -1,0 +1,56 @@
+/* Deliberately small. The priority list puts visual polish last, and every
+   line here is a line a visitor loads to read a verification result. */
+:root {
+  --bg: #0f1115; --panel: #161a21; --line: #262c36;
+  --text: #e6e9ef; --dim: #9aa4b2; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ok: #3fb950; --warn: #d29922; --bad: #f85149; --info: #58a6ff;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #fbfcfd; --panel: #fff; --line: #dde3ea; --text: #11151b; --dim: #5a6472; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+a { color: var(--info); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.nav { display: flex; gap: 1.5rem; align-items: center; padding: .75rem 1.25rem;
+  border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.brand { font-weight: 700; letter-spacing: .08em; color: var(--text); }
+.nav .links { display: flex; gap: 1rem; flex-wrap: wrap; }
+.nav a.active { color: var(--text); border-bottom: 2px solid var(--info); }
+.main { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+.page-head h1 { font-size: 1.4rem; margin: .5rem 0 .25rem; }
+.subtitle { color: var(--dim); margin: 0 0 1.5rem; max-width: 46rem; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 1rem 1.15rem; margin-bottom: 1rem; }
+.panel h2 { font-size: 1rem; margin: 0 0 .75rem; }
+dl.fields { display: grid; grid-template-columns: minmax(10rem, 14rem) 1fr; gap: .4rem 1rem; margin: 0; }
+.field { display: contents; }
+dt { color: var(--dim); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); font-size: .88em; }
+.pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+  font-size: .78rem; font-weight: 600; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); }
+.pill.bad { color: var(--bad); } .pill.neutral { color: var(--dim); }
+.pill.info { color: var(--info); }
+form.search { display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+input[type=text] { flex: 1 1 24rem; padding: .55rem .7rem; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); font-family: var(--mono); }
+button { padding: .55rem 1rem; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--info); color: #06121f; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .6; cursor: progress; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--dim); font-weight: 600; }
+.error { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px;
+  padding: .8rem 1rem; margin: 1rem 0; }
+.remediation { color: var(--dim); margin: .5rem 0 0; }
+.note { color: var(--dim); font-size: .9rem; border-left: 2px solid var(--line);
+  padding-left: .8rem; margin: 1rem 0; }
+.checks { list-style: none; padding: 0; margin: .5rem 0 0; }
+.checks li { padding: .35rem 0; border-bottom: 1px solid var(--line); display: flex;
+  gap: .6rem; align-items: baseline; flex-wrap: wrap; }
+.checks .detail { color: var(--dim); font-size: .88rem; }
+.empty { color: var(--dim); padding: 1.5rem 0; }
+.scroll { overflow-x: auto; }

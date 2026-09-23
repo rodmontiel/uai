@@ -73,7 +73,16 @@ declarado existe en el repo.
   goroutines no son eso. §18.3 da 2 locales para el MVP y ≥3 operadores independientes en
   producción; el mecanismo está implementado y testeado para lo segundo.
 
-- Fases 8–12: sin empezar.
+- **Fase 8 ✅** — las seis superficies en `web/` (home, verify, passport, explorer, cuarentena,
+  gobernanza) y `services/web`, que sirve un solo origen con CSP estricta y proxea `/v1` para no
+  necesitar CORS.
+
+  **El frontend no tiene dependencias ni build step** (ADR-0003). La página de verify **verifica
+  en el navegador** en vez de mostrar nuestro veredicto: una página que le pregunta a la API
+  "¿está bien esto?" y renderiza la respuesta es nuestra opinión con mejor tipografía. `test/web`
+  corre el código del navegador contra los **mismos vectores commiteados** que la implementación
+  en Go.
+- Fases 9–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
 `-race` más las 35 aserciones de invariantes.
@@ -125,6 +134,9 @@ autores angostó el protocolo sin decirlo.
 15. **Un adaptador que no publica nada tiene que PARECER que no publica nada.** Nunca devolver
     un identificador plausible por algo que no ocurrió: la evidencia falsa es peor que la
     evidencia ausente, porque la ausente se nota.
-16. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+16. **Una página que verifica no puede depender de código que no se pueda auditar.** Sin build
+    step, lo que se sirve es lo que está en el repo; y cada byte de JS en la página de verify es
+    código en el que un visitante confía para saber si confiar en un agente.
+17. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.

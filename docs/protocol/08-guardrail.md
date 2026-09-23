@@ -233,6 +233,21 @@ decision must never need the machinery that made it; the evaluator costs 33 thir
 and lives only where fresh decisions are produced. [ADR-0002](../adr/0002-opa-embedded-in-the-pdp.md)
 records the measurement and the reasoning.
 
+### 12.5.1.1 A baseline bundle has to be loadable
+
+The manifest example in §12.1.1 carries `effective_date: 2027-04-01`, which is what a bundle
+being **staged** looks like: registered, signed, not yet in force. That is a legitimate state
+and §12.6 depends on it.
+
+It is not a legitimate state for the only bundle a deployment has. A PDP fails closed when no
+policy is in effect, correctly, so a baseline dated in the future means every service that
+loads it refuses to start — and the operator is told the bundle was "rejected", which is true
+and unhelpful.
+
+The baseline in this repository is therefore effective from a date already past. Staging a
+successor with a future date is the normal release path and is exercised separately; the
+baseline is the floor, and a floor nobody can stand on is not a floor.
+
 ### 12.5.2 The special role of a category is data, not a rule
 
 §12.2 gives `SAFETY_SYSTEM_BYPASS` a special role: it defaults to acting at every severity,

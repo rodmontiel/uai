@@ -9,6 +9,7 @@ import (
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/internal/translog"
 	"github.com/rodmontiel/uai/pkg/attest"
+	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
 // attest records a signed action attestation.
@@ -122,7 +123,12 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 	var rcpt any
 	transparency := "UNLOGGED"
 	if s.translog != nil {
-		signed, err := json.Marshal(a)
+		// §18.1: leaf = SHA-256(0x00 || jcs(signed_statement)). Canonical bytes,
+		// not the bytes that happened to arrive. Hashing the wire form would
+		// make the leaf depend on key order and whitespace, so a verifier who
+		// re-serialized the statement -- which is what any verifier does -- would
+		// compute a different leaf and conclude the receipt was forged.
+		signed, err := uaicrypto.Canonicalize(a)
 		if err == nil {
 			if got, logErr := s.translog.Append(r.Context(), signed,
 				translog.KindAttestation, a.EventID, logTime); logErr == nil {

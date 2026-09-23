@@ -47,7 +47,7 @@ uai/
 ├── db/
 │   ├── migrations/            # golang-migrate SQL
 │   └── seed/
-├── web/                       # Next.js + TypeScript frontend
+├── web/                       # frontend: plain ES modules, no build step (ADR-0003)
 ├── sdk/
 │   ├── python/                # uai-sdk (PyPI)
 │   ├── typescript/            # @uai/sdk (npm)

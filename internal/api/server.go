@@ -152,6 +152,12 @@ func (s *Server) Routes() http.Handler {
 		RequirePoP(s.db, uaicrypto.DomainDecision, s.scheme),
 	))
 
+	// Public, read-only surfaces. Unauthenticated for the same reason /verify
+	// is: an accountability record nobody can read is not accountability.
+	mux.Handle("GET /v1/quarantines", Chain(http.HandlerFunc(s.listQuarantines), CaptureBody))
+	mux.Handle("GET /v1/cases/{id}", Chain(http.HandlerFunc(s.getCase), CaptureBody))
+	mux.Handle("GET /v1/governance/proposals", Chain(http.HandlerFunc(s.listProposals), CaptureBody))
+
 	// Public and unauthenticated by design: verification must survive being
 	// linked from a public page.
 	mux.Handle("GET /v1/verify/{uaiId}", Chain(http.HandlerFunc(s.verify), CaptureBody))

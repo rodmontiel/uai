@@ -232,6 +232,33 @@ transaction hash**. A development build that invented an anchor would make recei
 durability nobody provided, and the claim would be indistinguishable from a real one until
 somebody went looking for the transaction.
 
+### A verify page that verifies
+
+`web/` is plain ES modules and CSS. No framework, no build step, no dependencies — so what a
+browser executes is what is in this repository, and a reader can compare the two.
+
+That matters because of what the verify page does. It fetches public data and **checks the
+proofs in the browser**: it recomputes the leaf, walks the inclusion proof, checks the
+checkpoint signature and the witness co-signatures, and walks the event chain. The registry's
+own answer is shown beside those checks, labelled as the registry's answer.
+
+A page that asks our API "is this agent fine?" and renders the reply is our opinion with a nicer
+font. A visitor has no more reason to believe it than to believe us directly.
+
+Once the page is doing the verifying, every byte of JavaScript on it is code a visitor must
+trust in order to learn whether to trust an agent — which is why there is none but ours.
+[ADR-0003](docs/adr/0003-a-frontend-with-no-dependencies.md) records the reasoning and the
+deviation from §25, which had said Next.js.
+
+```bash
+make run-web    # :8081, one origin, strict CSP, /v1 proxied to the gateway
+make test-web   # runs the BROWSER code against spec/test-vectors/
+```
+
+The last one is the point: the frontend is held to the same standard as every other
+implementation. If it verified proofs its own way, it would give visitors a confident answer to
+a different question.
+
 ## Design priorities
 
 In every trade-off, in this order:

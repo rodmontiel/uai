@@ -527,8 +527,11 @@ func TestAttestationGetsATransparencyReceipt(t *testing.T) {
 		t.Fatalf("transparency = %q, want LOGGED", out.Transparency)
 	}
 
-	// The statement a verifier holds is the signed attestation itself.
-	statement, err := json.Marshal(a)
+	// The statement a verifier holds is the signed attestation, canonicalized.
+	// A verifier that re-serialized it any other way would compute a different
+	// leaf; RFC 8785 is what makes "the same statement" mean the same bytes on
+	// every machine that ever handles it.
+	statement, err := uaicrypto.Canonicalize(a)
 	if err != nil {
 		t.Fatal(err)
 	}

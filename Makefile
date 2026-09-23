@@ -144,6 +144,10 @@ run-gateway: $(ISSUER_KEY) ## Run the API gateway against the local stack
 $(ISSUER_KEY):
 	@$(MAKE) --no-print-directory issuer-key
 
+.PHONY: run-web
+run-web: ## Serve the frontend on :8081, proxying /v1 to the gateway
+	$(GO) run ./services/web -addr :8081 -root web -api http://127.0.0.1:8080
+
 .PHONY: run-ledger-writer
 run-ledger-writer: ## Drain the anchor queue once against a local EVM
 	$(GO) run ./services/ledger-writer -dsn "$(PG_DSN)" -once \
@@ -154,8 +158,14 @@ build: ## Build everything
 	$(GO) build ./...
 
 .PHONY: test
-test: ## Run Go unit tests
+test: test-web ## Run Go unit tests and the browser verification tests
 	$(GO) test ./... -count=1
+
+.PHONY: test-web
+test-web: ## Check the browser verification code against the committed vectors
+	@command -v node >/dev/null 2>&1 || { \
+		echo "node not found; skipping the browser verification tests"; exit 0; }
+	node --test "test/web/**/*.test.mjs"
 
 .PHONY: conformance
 conformance: ## Run the normative vectors, schemas and API checks
