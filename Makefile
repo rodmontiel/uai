@@ -95,6 +95,31 @@ seed: ## Load development bootstrap data (jurisdictions)
 migrate-down: ## Roll back the most recent migration
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations -steps 1 down
 
+## ---------- contracts ----------
+FORGE ?= $(shell command -v forge 2>/dev/null || echo $(HOME)/.local/foundry/bin/forge)
+
+.PHONY: contracts
+contracts: ## Compile the contracts and export their ABIs to spec/contracts/
+	@command -v $(FORGE) >/dev/null 2>&1 || { \
+		echo "forge not found. Install Foundry, or skip: the committed ABIs in"; \
+		echo "spec/contracts/ let `make check` verify INV-007/008 without it."; exit 1; }
+	cd contracts && $(FORGE) build
+	./contracts/export-abi.sh
+
+.PHONY: contracts-test
+contracts-test: ## Run the Solidity tests, including fuzzing
+	cd contracts && $(FORGE) test
+
+.PHONY: contracts-check
+contracts-check: contracts ## Fail if recompiling would change a published ABI
+	@if ! git diff --quiet -- spec/contracts; then \
+		echo "spec/contracts changed after recompiling:"; \
+		git --no-pager diff --stat -- spec/contracts; \
+		echo "A contract's published surface changed. Commit it deliberately."; \
+		exit 1; \
+	fi
+	@echo "contract ABIs are unchanged"
+
 ## ---------- quality ----------
 .PHONY: issuer-key
 issuer-key: ## Create the credential issuer signing key (once per deployment)

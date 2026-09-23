@@ -109,6 +109,34 @@ no application-layer compromise can bypass.
 Contracts are developed with Foundry, tested with fuzzing and invariant tests, and deployed
 behind a minimal, governance-gated proxy so that a bug can be fixed without losing history.
 
+### 17.3.1 The CI gate for INV-007 and INV-008
+
+The check named in §17.2.1 is implemented against the **compiled ABIs**, which are committed to
+`spec/contracts/` as specification artifacts. Two consequences follow, both intended: a third
+party integrates against a published surface rather than against our build directory, and a
+change to that surface appears as a reviewable diff instead of at deploy time.
+
+The rule: every parameter and return value of every function, constructor, event and error must
+be `bytes32`, `uintN`, `intN`, `bool`, `address`, or a tuple or array of those.
+
+Absent by design: `string`, dynamic `bytes`, and every `bytesN` other than 32. Those are the
+shapes that can carry a prompt, a document or an email address. A code-review gate would catch
+most of that most of the time; making the shapes unspellable catches all of it every time.
+
+`address` is allowed because access control needs it and an on-chain account is not personal
+data in the sense §17.2.1 is about. `uint8` covers enums, which is how Solidity encodes them.
+
+### 17.3.2 Two properties worth naming
+
+**The quorum is not a constant.** `UAIRevocationRegistry` reads `revocationThreshold()` and
+`minCountries()` from `UAIPolicyRegistry` on every call. A threshold compiled into the
+revocation contract could only be changed by redeploying it, which would put a governance
+parameter beyond the reach of governance.
+
+**Signature malleability is rejected.** Every ECDSA signature has a second, equally valid form
+with `s` in the upper half of the curve order. Accepting both would let one delegate be counted
+twice under two spellings of the same vote, so `UAIVoting` refuses the non-canonical form.
+
 ## 17.4 Anchoring pipeline
 
 ```mermaid

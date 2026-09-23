@@ -1,0 +1,511 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "admin",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_ADMIN",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_EXECUTOR",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_WRITER",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "deactivateDelegate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "delegate",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "key",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "country",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bool",
+              "name": "active",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct UAIGovernance.Delegate",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRole",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRole",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "isRegisteredDelegate",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "agentId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "openCase",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "proposal",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "caseId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "agentId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "enum UAIGovernance.State",
+              "name": "state",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint64",
+              "name": "openedAt",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct UAIGovernance.Proposal",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "proposalState",
+      "outputs": [
+        {
+          "internalType": "enum UAIGovernance.State",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "key",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "country",
+          "type": "bytes32"
+        }
+      ],
+      "name": "registerDelegate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRole",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "enum UAIGovernance.State",
+          "name": "to",
+          "type": "uint8"
+        }
+      ],
+      "name": "setState",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "agentId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "CaseOpened",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "DelegateDeactivated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "country",
+          "type": "bytes32"
+        }
+      ],
+      "name": "DelegateRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "agentId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ProposalCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum UAIGovernance.State",
+          "name": "state",
+          "type": "uint8"
+        }
+      ],
+      "name": "ProposalStateChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "by",
+          "type": "address"
+        }
+      ],
+      "name": "RoleGranted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "by",
+          "type": "address"
+        }
+      ],
+      "name": "RoleRevoked",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "AlreadyExists",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum UAIGovernance.State",
+          "name": "from",
+          "type": "uint8"
+        },
+        {
+          "internalType": "enum UAIGovernance.State",
+          "name": "to",
+          "type": "uint8"
+        }
+      ],
+      "name": "BadTransition",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "LastAdmin",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "NotAuthorized",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "delegateId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "UnknownDelegate",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "caseId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "UnknownProposal",
+      "type": "error"
+    }
+  ],
+  "contract": "UAIGovernance"
+}

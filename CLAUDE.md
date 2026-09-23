@@ -55,7 +55,17 @@ declarado existe en el repo.
   **El bundle commiteado trae su manifest y sus firmas; las claves de gobernanza no.** Editar
   una regla o un umbral rompe `make policy-verify` hasta que alguien con esas claves lo vuelva
   a firmar. La política no la cambia quien tiene acceso de escritura al repo.
-- Fases 7–12: sin empezar.
+- **Fase 7 🟡** — los 7 contratos en `contracts/src/`, compilados con warnings denegados y
+  linter limpio, con 31 tests Foundry incluyendo fuzzing. Su criterio del roadmap
+  (`AgentRevoked` exige una prueba de gobernanza on-chain) corre como test. Falta el
+  ledger-writer y el pipeline de anclaje.
+
+  **INV-007/008 es un gate del build, no una revisión de código.** `test/onchain` lee las ABIs
+  commiteadas en `spec/contracts/` y rechaza cualquier parámetro que no sea `bytes32`, `uintN`,
+  `intN`, `bool`, `address` o tuplas de eso. Un `string` o un `bytes` dinámico puede cargar un
+  prompt o un email; la única forma confiable de mantenerlos fuera de la cadena es que no se
+  puedan escribir.
+- Fases 8–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
 `-race` más las 35 aserciones de invariantes.
@@ -102,6 +112,8 @@ autores angostó el protocolo sin decirlo.
 13. **Auditar una decisión pasada nunca puede requerir la maquinaria que la tomó.** Por eso
     `pkg/policy` verifica bundles sin dependencias y OPA vive solo en `internal/pdp`: quien
     audita corre el camino liviano, quien decide carga los 33 módulos (ADR-0002).
-14. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+14. **Nada que pueda cargar contenido entra a un contrato.** No es una regla de revisión: es
+    un test sobre las ABIs commiteadas. Si un parámetro no es de ancho fijo, el build falla.
+15. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.

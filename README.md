@@ -184,6 +184,28 @@ Every decision is recorded, including `ALLOW`, and every record names the exact 
 and bundle hash that produced it. A guardrail that only logs denials cannot answer "what was
 permitted and why", which is the question that matters after an incident.
 
+### An administrator may submit a revocation, never decide one
+
+`UAIRevocationRegistry.executeRevocation` checks every consequential parameter against delegate
+signatures and a threshold read from the policy registry. A compromise of the application layer
+— or of the admin account itself — cannot produce a revocation the contract accepts.
+
+The quorum is not a constant in the contract. It is read from `UAIPolicyRegistry`, so governance
+can change it by signing a new policy instead of redeploying the code that enforces it. And a
+quorum drawn from one jurisdiction is refused: several countries must be represented, which is
+what stops a single government, or one operator holding several delegates, from revoking alone.
+
+```bash
+make contracts        # compile, then export the ABIs to spec/contracts/
+make contracts-test   # 31 tests, including 512-run fuzzing
+```
+
+**Nothing that could carry content can reach the chain.** `test/onchain` reads the committed
+ABIs and rejects any parameter that is not `bytes32`, `uintN`, `intN`, `bool`, `address` or a
+tuple of those. A `string` or a dynamic `bytes` could carry a prompt or an email address, and
+the only reliable way to keep those off a chain is to make them unspellable — so INV-007/008 is
+a build gate rather than a code-review habit.
+
 ## Design priorities
 
 In every trade-off, in this order:

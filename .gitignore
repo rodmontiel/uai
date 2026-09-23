@@ -26,3 +26,8 @@ raw/
 
 # issuer signing key: never committed
 .keys/
+
+# foundry build output and vendored test library
+contracts/out/
+contracts/cache/
+contracts/lib/
