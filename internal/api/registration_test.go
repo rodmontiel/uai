@@ -509,8 +509,10 @@ func TestMintedIdentityAnchorsItsChain(t *testing.T) {
 	if head.Hash != minted.GenesisEventHash {
 		t.Errorf("chain head = %s, want the genesis hash %s", head.Hash, minted.GenesisEventHash)
 	}
-	if head.Sequence != 0 {
-		t.Errorf("a freshly minted identity is at sequence %d, want 0", head.Sequence)
+	// Registration IS event 1: a minted identity already has a chain, it does
+	// not start one when it first acts.
+	if head.Sequence != 1 {
+		t.Errorf("a freshly minted identity is at sequence %d, want 1", head.Sequence)
 	}
 
 	// The commitment must be openable. One whose salt was discarded could never

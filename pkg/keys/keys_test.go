@@ -252,3 +252,38 @@ func TestKeysOrderedByValidity(t *testing.T) {
 		}
 	}
 }
+
+// TestBoundariesAreSecondGranular pins the fix for a bug that only an
+// end-to-end run could surface: an agent could not use its own key in the
+// second it was registered, because RFC 9421 signature timestamps are whole
+// seconds while the stored validity carried nanoseconds.
+func TestBoundariesAreSecondGranular(t *testing.T) {
+	_, pub, err := uaicrypto.GenerateEd25519Signer("did:uai:agent:01JY#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Introduced mid-second, as a real INSERT does.
+	introduced := time.Date(2026, 9, 23, 12, 32, 33, 800_000_000, time.UTC)
+	k := keys.Key{KID: "did:uai:agent:01JY#key-1", Public: pub, ValidFrom: introduced}
+
+	// The signature time a verifier actually receives: the same second, floored.
+	signedAt := introduced.Truncate(time.Second)
+	if err := k.UsableAt(signedAt); err != nil {
+		t.Errorf("a key must be usable in the second it was introduced: %v", err)
+	}
+	// The second before is still too early. The permissiveness is bounded.
+	if err := k.UsableAt(signedAt.Add(-time.Second)); !errors.Is(err, keys.ErrNotYetValid) {
+		t.Errorf("got %v, want ErrNotYetValid a second early", err)
+	}
+
+	// Closing boundaries err the other way: a key compromised mid-second is
+	// already unusable for signatures stamped with that second.
+	compromised := k
+	compromised.CompromiseDeclaredAt = time.Date(2026, 9, 23, 13, 0, 0, 500_000_000, time.UTC)
+	if err := compromised.UsableAt(compromised.CompromiseDeclaredAt.Truncate(time.Second)); !errors.Is(err, keys.ErrCompromised) {
+		t.Errorf("got %v, want ErrCompromised in the second of the declaration", err)
+	}
+	if err := compromised.UsableAt(compromised.CompromiseDeclaredAt.Add(-time.Second)); err != nil {
+		t.Errorf("a second before the declaration the key was still good: %v", err)
+	}
+}

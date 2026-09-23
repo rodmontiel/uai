@@ -180,11 +180,20 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/BindRequest' }
       responses:
+        '202':
+          description: |
+            Challenge issued. Sent with an empty body, these endpoints ask for a challenge; the
+            agent cannot sign a binding statement until the registry has told it which value to
+            sign over (§9.1).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindingChallenge' }
         '200':
           description: Bound
           content:
             application/json:
               schema: { $ref: '#/components/schemas/BindResult' }
+        '409': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
 
@@ -206,11 +215,20 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/UnbindRequest' }
       responses:
+        '202':
+          description: |
+            Challenge issued. Sent with an empty body, these endpoints ask for a challenge; the
+            agent cannot sign a binding statement until the registry has told it which value to
+            sign over (§9.1).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindingChallenge' }
         '200':
           description: Unbound; history retained
           content:
             application/json:
               schema: { $ref: '#/components/schemas/BindResult' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /agents/{id}/rebind:
     post:
@@ -230,11 +248,20 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/RebindRequest' }
       responses:
+        '202':
+          description: |
+            Challenge issued. Sent with an empty body, these endpoints ask for a challenge; the
+            agent cannot sign a binding statement until the registry has told it which value to
+            sign over (§9.1).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BindingChallenge' }
         '200':
           description: Rebound
           content:
             application/json:
               schema: { $ref: '#/components/schemas/BindResult' }
+        '409': { $ref: '#/components/responses/Problem' }
         '400': { $ref: '#/components/responses/Problem' }
 
   /agents/{id}/events:
@@ -741,37 +768,82 @@ components:
 
     BindRequest:
       type: object
-      required: [challenge, svid_spiffe_id, svid_cert_hash, signature]
+      description: |
+        Empty asks for a challenge. With a challenge and a signature it performs the bind, and
+        the signature then covers the challenge AND the SVID identifiers together — which is
+        what ties "who I am" to "where I am running". Either half alone would be forgeable by
+        an attacker holding the other.
       properties:
         challenge: { type: string }
         svid_spiffe_id: { type: string }
-        svid_cert_hash: { type: string }
+        svid_cert_hash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
         image_digest: { type: string }
-        signature: { type: object }
+        signature: { $ref: '#/components/schemas/Signature' }
 
     UnbindRequest:
       type: object
-      required: [challenge, signature]
+      description: Empty asks for a challenge. A reason is recorded, never required to be true.
       properties:
         challenge: { type: string }
         reason: { type: string }
-        signature: { type: object }
+        signature: { $ref: '#/components/schemas/Signature' }
 
     RebindRequest:
       type: object
-      required: [challenge, previous_event_hash, continuity_proof, signature]
+      description: Empty asks for a challenge.
       properties:
         challenge: { type: string }
-        previous_event_hash: { type: string }
+        previous_event_hash:
+          type: string
+          description: The last event before unbinding. The rebind links to it, so the gap is visible in the chain rather than papered over.
         unbound_at_log_index: { type: integer }
-        continuity_proof: { type: string }
-        signature: { type: object }
+        continuity_proof:
+          allOf: [{ $ref: '#/components/schemas/Signature' }]
+          description: |
+            A signature over the same binding statement, made by a key that was VALID AT THE
+            MOMENT OF UNBINDING (§9.3). It is a signature object and not an opaque string: a
+            continuity proof that cannot name the key that made it is unverifiable.
+
+            This is what stops "unbind, rotate the key, rebind" from laundering a stolen
+            identity. The key is resolved as of the unbind, so a compromise declared
+            retroactively to before that moment makes the proof fail.
+        signature: { $ref: '#/components/schemas/Signature' }
+
+    BindingChallenge:
+      type: object
+      required: [challenge, operation, audience, expires_in]
+      properties:
+        challenge: { type: string }
+        operation: { enum: [BIND_AGENT, UNBIND_AGENT, REBIND_AGENT] }
+        audience:
+          type: string
+          description: |
+            The registry the statement is for. It is inside the signed bytes so a statement
+            produced for one registry cannot be presented to another; without it a federated
+            deployment would honour a binding intended for a different operator.
+        expires_in: { type: integer }
+
+    Signature:
+      type: object
+      required: [alg, kid, domain, value]
+      properties:
+        alg: { enum: [EdDSA, ES256, ES384] }
+        kid: { type: string }
+        domain: { const: 'UAI-v1:challenge' }
+        value: { type: string }
 
     BindResult:
       type: object
+      required: [status, binding_id, sequence, event_hash]
       properties:
-        status: { type: string }
+        status: { enum: [ACTIVE, UNBOUND] }
         binding_id: { type: string }
+        sequence:
+          type: integer
+          description: Position in the agent's single event chain. Bindings and actions share it (§9.4).
+        event_hash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        runtime_identity_id: { type: string }
+        occurred_at: { type: string, format: date-time }
         receipt: { $ref: '#/components/schemas/TransparencyReceipt' }
 
     PassportRequest:

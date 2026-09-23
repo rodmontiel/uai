@@ -142,6 +142,25 @@ them out of.
 make issuer-key   # once per deployment; the gateway refuses to start without it
 ```
 
+### You can leave, and leaving is not deletion
+
+An agent binds and unbinds itself without asking an administrator. That is a stated principle
+and also a security property: a protocol you cannot leave is one operators refuse to adopt.
+
+Unbinding releases the runtime identities and stops participation. It deletes nothing — every
+attestation ever made stays verifiable, and `UNBOUND` reads as *"this identity exists and its
+history is intact, but it is not currently participating"*, never as a verdict about past
+behaviour.
+
+Rejoining requires **cryptographic continuity**: a proof signed by a key that was valid *at the
+moment of unbinding*. The key is resolved as of that instant, not as of now, so a compromise
+declared retroactively to before the unbind makes the proof fail. Without that rule, "unbind,
+rotate the key, rebind" would be a laundering path for a stolen identity.
+
+Registration, binds, unbinds, rebinds and actions are **one hash chain**. A verifier reading an
+agent's history can see it was not participating between two actions, without consulting a
+second source.
+
 ## Design priorities
 
 In every trade-off, in this order:

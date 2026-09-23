@@ -59,7 +59,7 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 		WriteStoreError(w, r, err)
 		return
 	}
-	if statusRefusal(w, r, agent) {
+	if requireActive(w, r, agent) {
 		return
 	}
 

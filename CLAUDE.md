@@ -37,16 +37,16 @@ declarado existe en el repo.
 - **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
   `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
   (checkpoints, receipts, co-firma de witnesses).
-- **Fase 4 🟡** — `internal/store` (persistencia con cadena de eventos atómica), `internal/api`
-  (problem+json, middleware de PoP e idempotencia, handlers de attestation y verificación),
-  `services/gateway`, y el **flujo de registro completo** (§8: doble desafío owner+agente,
-  `pkg/challenge`, thumbprint RFC 7638 en `pkg/uaicrypto`, migración 0003). Faltan binding
-  (§9: BIND/UNBIND/REBIND) y emisión de credenciales.
+- **Fase 4 ✅** — su criterio del roadmap ("Register → bind → attest works end to end") corre
+  como test: `TestRegisterBindAttestEndToEnd`. Incluye `internal/store`, `internal/api`,
+  `services/gateway`, registro con doble desafío (§8), emisión de credenciales (§8.2) y
+  binding con prueba de continuidad (§9).
 
-  **Hueco conocido, a cerrar con binding:** `statusRefusal` deja atestiguar a un agente en
-  `REGISTERED`. Según §6.10 las acciones salen de `ACTIVE`, y llegar a `ACTIVE` exige binding
-  de runtime. Exigir `ACTIVE` hoy dejaría la attestation inalcanzable hasta que exista binding,
-  así que se cierra junto con él y no antes.
+  **Cadena unificada:** registro, binds, unbinds, rebinds y acciones viven todos en
+  `agent_chain_events`. El registro es la secuencia 1, así que la primera acción es la 2. La
+  regla de fork cubre ahora todo tipo de evento, no solo acciones.
+
+  Atestiguar exige `ACTIVE`, y a `ACTIVE` se llega bindeando un runtime.
 - Fases 6–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
@@ -87,6 +87,10 @@ autores angostó el protocolo sin decirlo.
     emite credenciales que dejan de verificar, y el operador se entera por fallas de
     verificación en vez de por un error de arranque. `make issuer-key` la crea una vez, y el
     gateway se niega a arrancar sin ella.
-12. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+12. **Todo lo que le pasa a una identidad va a la misma cadena.** Si un cambio de estado no
+    está en `agent_chain_events`, quien recorre la historia no lo ve, y el estado al momento
+    del evento hay que sacarlo de una segunda fuente — que es justo el trabajo que una cadena
+    de hashes existe para evitar.
+13. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.

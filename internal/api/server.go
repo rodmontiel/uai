@@ -16,6 +16,9 @@ import (
 // until the policy service ships (Phase 6).
 const DefaultPolicyVersion = "GASC-2027.4"
 
+// DefaultAudience is the registry identifier carried in binding statements.
+const DefaultAudience = "uai-agent-registry"
+
 // Server is the UAI HTTP surface.
 type Server struct {
 	db       *store.DB
@@ -31,7 +34,12 @@ type Server struct {
 	// verifying the next time it restarts.
 	issuer    uaicrypto.Signer
 	issuerDID string
-	now       func() time.Time
+	// audience is this registry's identifier inside a signed binding statement
+	// (§9.1). It is there so a statement produced for one registry cannot be
+	// presented to another: without it, a federated deployment would honour a
+	// binding intended for a different operator.
+	audience string
+	now      func() time.Time
 }
 
 // Option configures a Server.
@@ -45,6 +53,9 @@ func WithScheme(s string) Option { return func(srv *Server) { srv.scheme = s } }
 // WithPolicyVersion sets the GASC bundle version recorded on new identities.
 func WithPolicyVersion(v string) Option { return func(srv *Server) { srv.policyVersion = v } }
 
+// WithAudience sets the registry identifier that binding statements must name.
+func WithAudience(a string) Option { return func(srv *Server) { srv.audience = a } }
+
 // WithIssuer sets the credential issuer identity and its signing key.
 func WithIssuer(did string, signer uaicrypto.Signer) Option {
 	return func(srv *Server) { srv.issuerDID, srv.issuer = did, signer }
@@ -56,7 +67,7 @@ func WithClock(f func() time.Time) Option { return func(srv *Server) { srv.now =
 // NewServer builds the HTTP surface.
 func NewServer(db *store.DB, opts ...Option) *Server {
 	s := &Server{db: db, resolver: NewStoreResolver(db), scheme: "https",
-		policyVersion: DefaultPolicyVersion, now: time.Now}
+		policyVersion: DefaultPolicyVersion, audience: DefaultAudience, now: time.Now}
 	for _, o := range opts {
 		o(s)
 	}
@@ -98,6 +109,20 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /v1/agents/{id}", Chain(http.HandlerFunc(s.getAgent), CaptureBody))
 	mux.Handle("GET /v1/agents/{id}/events", Chain(http.HandlerFunc(s.getEvents), CaptureBody))
 	mux.Handle("GET /v1/agents/{id}/credentials", Chain(http.HandlerFunc(s.getCredentials), CaptureBody))
+
+	// Binding: proof of possession first, then idempotency. §9.5 requires all
+	// three operations to be safely retryable, and the challenge exchange makes
+	// that matter -- a retry that issued a second challenge would leave the
+	// first one dangling until it expired.
+	for path, handler := range map[string]http.HandlerFunc{
+		"POST /v1/agents/{id}/bind":   s.bind,
+		"POST /v1/agents/{id}/unbind": s.unbind,
+		"POST /v1/agents/{id}/rebind": s.rebind,
+	} {
+		mux.Handle(path, Chain(handler, CaptureBody,
+			RequirePoP(s.db, uaicrypto.DomainChallenge, s.scheme),
+			RequireIdempotency(s.db, path)))
+	}
 	mux.Handle("GET /v1/actions/{eventId}", Chain(http.HandlerFunc(s.getAction), CaptureBody))
 
 	// Public and unauthenticated by design: verification must survive being
@@ -142,6 +167,26 @@ func parseUAIID(w http.ResponseWriter, r *http.Request, raw string) (uaiid.ID, b
 		return uaiid.ID{}, false
 	}
 	return id, true
+}
+
+// requireActive refuses an agent that may not attest actions.
+//
+// §6.10 puts actions in ACTIVE, and ACTIVE is reached by binding a runtime.
+// That is not bureaucracy: an attestation from an identity with no bound
+// runtime claims that something ran, while naming nothing that could have run
+// it. Accepting it would make "runtime assurance" optional in practice while
+// the documents said it was not.
+func requireActive(w http.ResponseWriter, r *http.Request, a store.Agent) bool {
+	if statusRefusal(w, r, a) {
+		return true
+	}
+	if a.Status != "ACTIVE" {
+		WriteProblem(w, r, http.StatusForbidden, "UAI_IDENTITY_NOT_ACTIVE",
+			"Identity "+a.DID+" is "+a.Status+" and has no bound runtime, so it cannot attest actions.",
+			WithRemediation("Bind a runtime with POST /v1/agents/{id}/bind. Existing history is unaffected."))
+		return true
+	}
+	return false
 }
 
 // statusRefusal turns an agent status into a refusal, or returns false when the

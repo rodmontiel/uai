@@ -146,6 +146,32 @@ func (e *env) post(t *testing.T, a attest.Attestation, idemKey string) *httptest
 	return rec
 }
 
+// postSigned issues a PoP-signed JSON request to this env's own server.
+func (e *env) postSigned(t *testing.T, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.postSignedTo(t, e.srv, path, body)
+}
+
+// postSignedTo signs with THIS env's agent key but sends to another server, so
+// a test can check that holding a valid key is not permission to act for
+// somebody else.
+func (e *env) postSignedTo(t *testing.T, srv http.Handler, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test"+path, strings.NewReader(string(raw)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-"+nonce())
+	if err := pop.SignRequest(e.signer, req, raw, uaicrypto.DomainChallenge, e.agent.UAIID, nonce()); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	return rec
+}
+
 func problemTitle(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
 	var p api.Problem
@@ -158,7 +184,9 @@ func problemTitle(t *testing.T, rec *httptest.ResponseRecorder) string {
 func TestAttestAdvancesTheChain(t *testing.T) {
 	e := setup(t)
 	prev := e.agent.GenesisEventHash
-	for i := int64(1); i <= 3; i++ {
+	// Registration occupies sequence 1 (§9.4), so the first action is 2. The
+	// client does not guess this: it reads the head and adds one.
+	for i := int64(2); i <= 4; i++ {
 		rec := e.post(t, e.attestation(t, prev, i), "idem-"+ulid("I"))
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("attest %d: status %d, body %s", i, rec.Code, rec.Body.String())
@@ -182,7 +210,7 @@ func TestAttestAdvancesTheChain(t *testing.T) {
 
 func TestUnsignedRequestRejected(t *testing.T) {
 	e := setup(t)
-	a := e.attestation(t, e.agent.GenesisEventHash, 1)
+	a := e.attestation(t, e.agent.GenesisEventHash, 2)
 	body, _ := json.Marshal(a)
 	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test/v1/actions/attest", strings.NewReader(string(body)))
 	req.Header.Set("Idempotency-Key", "idem-"+ulid("I"))
@@ -196,7 +224,7 @@ func TestUnsignedRequestRejected(t *testing.T) {
 
 func TestAttestingForAnotherAgentRejected(t *testing.T) {
 	e := setup(t)
-	a := e.attestation(t, e.agent.GenesisEventHash, 1)
+	a := e.attestation(t, e.agent.GenesisEventHash, 2)
 	// Re-sign the attestation body under a different declared identity. The
 	// request signature is still ours, so this is precisely the case where
 	// trusting the body would make attribution a string comparison.
@@ -215,7 +243,7 @@ func TestByteIdenticalResendIsAReplay(t *testing.T) {
 	// A retry must re-sign. Resending the exact same bytes reuses the RFC 9421
 	// nonce, and a nonce is single-use by construction.
 	e := setup(t)
-	a := e.attestation(t, e.agent.GenesisEventHash, 1)
+	a := e.attestation(t, e.agent.GenesisEventHash, 2)
 	body, _ := json.Marshal(a)
 	key := "idem-" + ulid("I")
 	reqNonce := nonce()
@@ -244,7 +272,7 @@ func TestResignedRetryReplaysTheOriginalResponse(t *testing.T) {
 	// signature and nonce. The effect happens once and the caller sees the
 	// original response.
 	e := setup(t)
-	a := e.attestation(t, e.agent.GenesisEventHash, 1)
+	a := e.attestation(t, e.agent.GenesisEventHash, 2)
 	key := "idem-" + ulid("I")
 
 	first := e.post(t, a, key)
@@ -266,7 +294,9 @@ func TestResignedRetryReplaysTheOriginalResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if head.Sequence != 1 {
+	// 2, not 1: registration is sequence 1 and the single action is 2. A second
+	// event would put the head at 3.
+	if head.Sequence != 2 {
 		t.Fatalf("the retry created a second event: sequence %d", head.Sequence)
 	}
 }
@@ -274,7 +304,7 @@ func TestResignedRetryReplaysTheOriginalResponse(t *testing.T) {
 func TestStaleChainHeadReturnsTheCurrentHead(t *testing.T) {
 	e := setup(t)
 	prev := e.agent.GenesisEventHash
-	if rec := e.post(t, e.attestation(t, prev, 1), "idem-"+ulid("I")); rec.Code != http.StatusCreated {
+	if rec := e.post(t, e.attestation(t, prev, 2), "idem-"+ulid("I")); rec.Code != http.StatusCreated {
 		t.Fatalf("setup attest: %d %s", rec.Code, rec.Body.String())
 	}
 	rec := e.post(t, e.attestation(t, prev, 2), "idem-"+ulid("I"))
@@ -288,15 +318,15 @@ func TestStaleChainHeadReturnsTheCurrentHead(t *testing.T) {
 	if p.Title != "UAI_CHAIN_CONFLICT" || p.ChainHead == nil {
 		t.Fatalf("a conflict must carry the current head: %s", rec.Body.String())
 	}
-	if p.ChainHead.Sequence != 1 {
-		t.Fatalf("head sequence = %d, want 1", p.ChainHead.Sequence)
+	if p.ChainHead.Sequence != 2 {
+		t.Fatalf("head sequence = %d, want 2", p.ChainHead.Sequence)
 	}
 }
 
 func TestRevokedIdentityCannotAttest(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	if rec := e.post(t, e.attestation(t, e.agent.GenesisEventHash, 1), "idem-"+ulid("I")); rec.Code != http.StatusCreated {
+	if rec := e.post(t, e.attestation(t, e.agent.GenesisEventHash, 2), "idem-"+ulid("I")); rec.Code != http.StatusCreated {
 		t.Fatalf("setup attest: %d %s", rec.Code, rec.Body.String())
 	}
 	head, err := e.db.ChainHead(ctx, e.agent.ID)
@@ -306,7 +336,7 @@ func TestRevokedIdentityCannotAttest(t *testing.T) {
 	if err := e.db.SetAgentStatus(ctx, e.agent.ID, "REVOKED", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	rec := e.post(t, e.attestation(t, head.Hash, 2), "idem-"+ulid("I"))
+	rec := e.post(t, e.attestation(t, head.Hash, 3), "idem-"+ulid("I"))
 	if rec.Code != http.StatusForbidden || problemTitle(t, rec) != "UAI_IDENTITY_REVOKED" {
 		t.Fatalf("status %d, title %s", rec.Code, problemTitle(t, rec))
 	}
@@ -372,7 +402,7 @@ func TestRevokedIdentityStillVerifiesAsRevoked(t *testing.T) {
 
 func TestIdempotencyKeyRequired(t *testing.T) {
 	e := setup(t)
-	a := e.attestation(t, e.agent.GenesisEventHash, 1)
+	a := e.attestation(t, e.agent.GenesisEventHash, 2)
 	body, _ := json.Marshal(a)
 	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test/v1/actions/attest", strings.NewReader(string(body)))
 	if err := pop.SignRequest(e.signer, req, body, uaicrypto.DomainAttestation, e.agent.UAIID, nonce()); err != nil {

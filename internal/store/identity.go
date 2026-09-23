@@ -145,8 +145,26 @@ func insertAgent(ctx context.Context, tx pgx.Tx, a Agent, key AgentKey) error {
 			VALUES ($1,$2,$3,$4::signature_alg,$5,$6::key_protection,$7,$8,$9)`,
 			key.ID, a.ID, key.KeyID, key.Alg, key.PublicJWK, key.Protection,
 			key.ValidFrom, key.ValidUntil, key.LogIndex)
-		return classify(err)
+		if err != nil {
+			return classify(err)
+		}
+		// The first link of the chain (§9.4, "EVENT 001 register"). Writing it
+		// here rather than letting the head fall back to a column on agents
+		// means an agent either has a chain or does not exist: there is no
+		// third state where the head is inferred from somewhere else.
+		return appendChainEvent(ctx, tx, ChainEvent{
+			ID: "evt-" + a.ID, AgentID: a.ID, Sequence: 1, Kind: KindRegister,
+			EventHash: a.GenesisEventHash, OccurredAt: registeredAt(a),
+		}, ChainHead{})
 	}
+}
+
+// registeredAt is the moment the identity came into existence.
+func registeredAt(a Agent) time.Time {
+	if a.RegisteredAt.IsZero() {
+		return time.Now().UTC()
+	}
+	return a.RegisteredAt
 }
 
 // OrganizationDIDByID returns an organization's DID, or "" when there is none.
@@ -230,18 +248,6 @@ func (db *DB) SetAgentStatus(ctx context.Context, agentID, status string, at tim
 		return fmt.Errorf("%w: agent %s", ErrNotFound, agentID)
 	}
 	return nil
-}
-
-// RecordBinding appends a bind, unbind or rebind event.
-func (db *DB) RecordBinding(ctx context.Context, id, agentID, operation, previousEventHash,
-	continuityProof, spiffeID, reason, signature, signerKID string) error {
-	_, err := db.pool.Exec(ctx, `
-		INSERT INTO agent_bindings (id, agent_id, operation, previous_event_hash, continuity_proof,
-		                            spiffe_id, reason, signature, signer_kid)
-		VALUES ($1,$2,$3::binding_operation,$4,$5,$6,$7,$8,$9)`,
-		id, agentID, operation, nullable(previousEventHash), nullable(continuityProof),
-		nullable(spiffeID), nullable(reason), signature, signerKID)
-	return classify(err)
 }
 
 func nullableBytes(b []byte) any {

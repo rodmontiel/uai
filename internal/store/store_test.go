@@ -141,10 +141,21 @@ func TestChainStartsAtGenesis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The chain is anchored to the identity itself, not to nothing: the first
-	// action must reference the registration event.
-	if head.Hash != f.agent.GenesisEventHash || head.Sequence != 0 {
-		t.Fatalf("head = %+v, want genesis %s at sequence 0", head, f.agent.GenesisEventHash)
+	// The chain is anchored to the identity itself, not to nothing. Registration
+	// IS event 1 (§9.4), so a fresh identity already has a link: the first
+	// action references it rather than starting a chain of its own.
+	if head.Hash != f.agent.GenesisEventHash || head.Sequence != 1 {
+		t.Fatalf("head = %+v, want genesis %s at sequence 1", head, f.agent.GenesisEventHash)
+	}
+	events, err := f.db.ChainEvents(context.Background(), f.agent.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Kind != store.KindRegister {
+		t.Fatalf("a fresh identity has %d events, want one REGISTER", len(events))
+	}
+	if events[0].PreviousEventHash != "" {
+		t.Error("the registration event must not reference a predecessor")
 	}
 }
 
@@ -161,8 +172,9 @@ func TestAppendAdvancesTheChain(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if head.Hash != h || head.Sequence != int64(i) {
-			t.Fatalf("after append %d head = %+v, want %s at %d", i, head, h, i)
+		// +1 because registration already occupies sequence 1.
+		if head.Hash != h || head.Sequence != int64(i)+1 {
+			t.Fatalf("after append %d head = %+v, want %s at %d", i, head, h, i+1)
 		}
 		prev = h
 	}
@@ -190,7 +202,7 @@ func TestStaleHeadIsAConflictNotAFork(t *testing.T) {
 	if !errors.As(err, &conflict) {
 		t.Fatalf("expected the current head to be reported, got %v", err)
 	}
-	if conflict.Actual.Hash != h1 || conflict.Actual.Sequence != 1 {
+	if conflict.Actual.Hash != h1 || conflict.Actual.Sequence != 2 {
 		t.Fatalf("conflict reports head %+v, want %s at 1", conflict.Actual, h1)
 	}
 }

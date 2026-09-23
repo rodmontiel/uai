@@ -249,6 +249,25 @@ committed to log → grace period where both keys are accepted → old key marke
 Emergency rotation (suspected compromise) skips the grace period and MUST create a
 `KeyCompromiseDeclared` event, which makes every later event signed by the old key invalid.
 
+### 6.7.1 Boundaries are evaluated at one-second granularity
+
+The timestamps a verifier actually receives are whole seconds: RFC 9421 `created` is an integer,
+and Data Integrity `created` is routinely emitted without a fractional part. Comparing those
+against boundaries stored with nanosecond precision makes every boundary ambiguous by up to a
+second.
+
+This is not theoretical. It surfaced the first time registration and the agent's first request
+happened in the same second: the key was stored with `valid_from` at `12:32:33.800`, the
+signature was stamped `12:32:33`, and the agent was told its own key was not yet valid.
+
+Every boundary is therefore truncated to the second, which resolves the ambiguity in one
+consistent direction:
+
+| Boundary | Truncated | Effect |
+|---|---|---|
+| `validFrom` | down | Usable from the **start** of the second it was introduced in. Permissive by under a second, at the only moment when nothing has been signed with it yet |
+| `validUntil`, `revokedAt`, `compromiseDeclaredAt` | down | Unusable from the **start** of the second in which it ended. Conservative, which is the direction these three must err in |
+
 ## 6.8 Assurance levels
 
 Relying parties need a compact way to express "how strongly is this identity established".
@@ -298,7 +317,11 @@ stateDiagram-v2
 Normative rules:
 
 1. Every transition is validated server-side against this machine; the client never asserts a
-   target state.
+   target state. In particular **actions require `ACTIVE`**, and `ACTIVE` is reached by binding
+   a runtime ([§9.1](05-registration-binding.md)). That is not bureaucracy: an attestation from
+   an identity with no bound runtime claims that something ran while naming nothing that could
+   have run it, and accepting it would make runtime assurance optional in practice while these
+   documents said it was not.
 2. Every transition emits a signed `StateTransition` event with `before_state_hash` and
    `after_state_hash`, is written to the transparency log, and is anchored.
 3. `UNBOUND` does not delete anything. The event chain continues across unbind/rebind;

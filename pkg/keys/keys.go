@@ -121,24 +121,53 @@ func (k Key) Validate() error {
 	return nil
 }
 
+// Granularity is the resolution at which key validity is evaluated.
+//
+// It is one second because that is the resolution of the timestamps UAI
+// actually receives: RFC 9421 `created` is an integer number of seconds, and a
+// Data Integrity proof's `created` is an RFC 3339 instant that implementations
+// routinely emit without a fractional part. Comparing a second-granular
+// signature time against a nanosecond-precision boundary makes every boundary
+// ambiguous by up to a second, and the ambiguity showed up immediately: a key
+// stored with valid_from = 12:32:33.800 rejected the agent's very first request,
+// whose signature time was the truncated 12:32:33.
+//
+// Every boundary is therefore truncated to this granularity, which resolves the
+// ambiguity in a consistent direction:
+//
+//   - ValidFrom truncated down means a key is usable from the START of the
+//     second it was introduced in. Slightly permissive, by less than a second,
+//     at the only moment when nothing has been signed with it yet.
+//   - ValidUntil, RevokedAt and CompromiseDeclaredAt truncated down mean a key
+//     stops being usable from the START of the second in which it ended.
+//     Conservative, which is the direction these three must err in.
+const Granularity = time.Second
+
+func floor(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	return t.Truncate(Granularity)
+}
+
 // UsableAt reports whether the key verifies a signature made at t, and why not
 // when it does not.
 func (k Key) UsableAt(t time.Time) error {
-	if t.Before(k.ValidFrom) {
+	if t.Before(floor(k.ValidFrom)) {
 		return fmt.Errorf("%w: %s valid from %s, signature at %s",
 			ErrNotYetValid, k.KID, k.ValidFrom.UTC().Format(time.RFC3339), t.UTC().Format(time.RFC3339))
 	}
 	// Compromise is checked before the softer conditions: a stolen key is not
 	// merely retired, and the error a caller sees should say so.
-	if !k.CompromiseDeclaredAt.IsZero() && !t.Before(k.CompromiseDeclaredAt) {
+	if !k.CompromiseDeclaredAt.IsZero() && !t.Before(floor(k.CompromiseDeclaredAt)) {
 		return fmt.Errorf("%w: %s compromised at %s, signature at %s",
 			ErrCompromised, k.KID, k.CompromiseDeclaredAt.UTC().Format(time.RFC3339), t.UTC().Format(time.RFC3339))
 	}
-	if !k.ValidUntil.IsZero() && t.After(k.ValidUntil) {
+	if !k.ValidUntil.IsZero() && t.After(floor(k.ValidUntil)) {
 		return fmt.Errorf("%w: %s expired %s, signature at %s",
 			ErrExpired, k.KID, k.ValidUntil.UTC().Format(time.RFC3339), t.UTC().Format(time.RFC3339))
 	}
-	if !k.RevokedAt.IsZero() && t.After(k.RevokedAt) {
+	if !k.RevokedAt.IsZero() && t.After(floor(k.RevokedAt)) {
 		return fmt.Errorf("%w: %s revoked %s, signature at %s",
 			ErrRevoked, k.KID, k.RevokedAt.UTC().Format(time.RFC3339), t.UTC().Format(time.RFC3339))
 	}

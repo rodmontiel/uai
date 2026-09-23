@@ -221,6 +221,45 @@ The signature covers both the persistent-key challenge **and** the SVID identifi
 what cryptographically ties "who I am" to "where I am running" — either alone would be
 forgeable by an attacker holding the other.
 
+### 9.1.1 The exchange, precisely
+
+All three operations use **one endpoint and two calls**, exactly as the diagram above shows.
+An empty `POST` asks for a challenge; a `POST` carrying the challenge and a signature performs
+the operation. There is no separate challenge endpoint, because an agent cannot sign a binding
+statement until the registry has told it which value to sign over.
+
+Both calls require proof of possession. The signed statement is not a second authentication —
+PoP already establishes who is calling. It is the **durable evidence**: a stored HTTP message
+signature is awkward to re-verify years later, while the statement below is self-contained and
+re-verifiable forever from the row it is stored in.
+
+```json
+{
+  "challenge": "<server-issued, single-use, 300 s>",
+  "operation": "BIND_AGENT",
+  "uai_id": "uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "audience": "uai-agent-registry",
+  "svid_spiffe_id": "spiffe://uai.world/agents/01JY…/i/7f6a92",
+  "svid_cert_hash": "sha256:…",
+  "image_digest": "sha256:…"
+}
+```
+
+Canonicalized with RFC 8785, signed under `UAI-v1:challenge`.
+
+`audience` is inside the signed bytes on purpose. Without it, a statement produced for one
+registry could be presented to another, and a federated deployment would honour a binding
+intended for a different operator.
+
+Which members each operation carries is not decoration, and an implementation MUST refuse the
+wrong shape:
+
+| Operation | Carries | Refused |
+|---|---|---|
+| `BIND_AGENT` | `svid_spiffe_id`, `svid_cert_hash`, optional `image_digest` | A bind with no runtime records *who* but not *where*, which is the half the operation exists to establish |
+| `UNBIND_AGENT` | optional `reason` | Runtime identifiers, which it is not attaching |
+| `REBIND_AGENT` | `previous_event_hash`, `continuity_proof` | Runtime identifiers: rebinding restores participation, attaching a runtime is a separate act, and one event asserting both would mean two things |
+
 ### 9.2 `UNBIND_AGENT`
 
 An agent may leave UAI at any time without asking anyone. This is a stated principle, and it is
@@ -268,6 +307,25 @@ was valid at the moment of unbinding, and the new key MUST be introduced through
 logged DID Document version. Without this rule, "unbind, rotate, rebind" would be a laundering
 path for a stolen identity.
 
+`continuity_proof` is a **signature object**, not an opaque string: a proof that cannot name the
+key that made it is unverifiable, so it carries `alg`, `kid`, `domain` and `value` like every
+other signature in UAI.
+
+The rule has teeth because of *when* the key is resolved. The registry resolves
+`continuity_proof.kid` **as of the unbind timestamp**, not as of now, using the key history of
+[§6.7](03-identity.md). Follow the theft through:
+
+1. An attacker holding the agent's key unbinds. It is a valid signature, so it succeeds.
+2. The owner discovers the theft and declares the key compromised **as of a moment before the
+   unbind**.
+3. The attacker rotates to a key of its own and attempts a rebind, vouching with the stolen key.
+4. Resolution as of the unbind now reports that key as compromised at that instant. The
+   continuity proof fails and the identity cannot be walked back in.
+
+A compromise declaration is retroactive to the declared moment and never moves later
+([§6.7](03-identity.md)), which is what makes step 4 work. Had the key been resolved as of the
+rebind instead, the attacker could simply have waited.
+
 ### 9.4 Event chain across bind/unbind
 
 ```mermaid
@@ -281,6 +339,20 @@ flowchart LR
 
 The chain does not restart. A verifier walking backwards from any action reaches the
 registration event through an unbroken hash path, regardless of how many bind cycles occurred.
+
+**This is one chain in one table**, not two chains reconciled after the fact. Registration,
+binds, unbinds, rebinds and actions all link in `agent_chain_events`, and the uniqueness rules
+that make a fork impossible are stated once there rather than per kind of event.
+
+The reason is auditability, not tidiness. With bindings outside the chain, a verifier reading an
+agent's history could not see that it was `UNBOUND` between two actions: the state at event time
+would have to come from a second source, and reconciling two sources is precisely the work a
+hash chain exists to avoid. It also means the fork rule now covers every kind of event — a bind
+claiming an already-claimed predecessor is as much a fork as a second action would be.
+
+One consequence to state plainly: **registration is sequence 1.** An agent's first action is
+sequence 2. A client never has to know this, because it reads the chain head and adds one, but
+an implementer reading a chain by hand will notice the offset.
 
 ### 9.5 Idempotency and concurrency
 

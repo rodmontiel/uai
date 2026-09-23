@@ -46,10 +46,20 @@ VALUES ('dec-1', 'ag-1', 'route.optimize', 'delivery', '{"origin":"AR"}'::jsonb,
         '{"identity":"PASS"}'::jsonb, 'ALLOW', 'GASC-2027.4', 'sha256:' || repeat('1', 64),
         'sig', 'did:web:pdp.uai.world#key-1', now());
 
-INSERT INTO action_events (id, agent_id, owner_id, decision_id, sequence, action_type, purpose,
-                           jurisdiction_origin, jurisdiction_basis, outcome, event_hash, asserted_at)
-VALUES ('ev-1', 'ag-1', 'own-1', 'dec-1', 1, 'route.optimize', 'delivery', 'AR',
-        'owner_jurisdiction', 'SUCCESS', 'sha256:' || repeat('b', 64), now());
+-- Registration is the first link of the chain (section 9.4), so an agent's
+-- first action is sequence 2.
+INSERT INTO agent_chain_events (id, agent_id, sequence, kind, event_hash, occurred_at)
+VALUES ('reg-ev-1', 'ag-1', 1, 'REGISTER', 'sha256:' || repeat('0', 64), now());
+
+INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                event_hash, occurred_at)
+VALUES ('ev-1', 'ag-1', 2, 'ACTION', 'sha256:' || repeat('0', 64),
+        'sha256:' || repeat('b', 64), now());
+
+INSERT INTO action_events (id, agent_id, owner_id, decision_id, action_type, purpose,
+                           jurisdiction_origin, jurisdiction_basis, outcome, asserted_at)
+VALUES ('ev-1', 'ag-1', 'own-1', 'dec-1', 'route.optimize', 'delivery', 'AR',
+        'owner_jurisdiction', 'SUCCESS', now());
 
 INSERT INTO action_attestations (event_id, agent_id, payload, alg, signature, signer_kid, nonce)
 VALUES ('ev-1', 'ag-1', '{}'::jsonb, 'EdDSA', 'zSig',
@@ -254,33 +264,57 @@ SELECT assert_fails('INV-009', 'decision record is immutable', $$
 
 -- ── chain and protocol integrity ────────────────────────────────────────────
 
-INSERT INTO action_events (id, agent_id, owner_id, sequence, action_type, purpose,
-                           jurisdiction_origin, jurisdiction_basis, outcome,
-                           previous_event_hash, event_hash, asserted_at)
-VALUES ('ev-2', 'ag-1', 'own-1', 2, 'route.optimize', 'delivery', 'AR', 'owner_jurisdiction',
-        'SUCCESS', 'sha256:' || repeat('b', 64), 'sha256:' || repeat('2', 64), now());
+INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                event_hash, occurred_at)
+VALUES ('ev-2', 'ag-1', 3, 'ACTION', 'sha256:' || repeat('b', 64),
+        'sha256:' || repeat('2', 64), now());
 
+-- The fork rule now covers EVERY kind of event, not only actions. A BIND that
+-- claimed an already-claimed predecessor is as much a fork as a second action
+-- would be, and before the chain was unified nothing said so.
 SELECT assert_fails('CHAIN', 'a fork cannot be committed', $$
-    INSERT INTO action_events (id, agent_id, owner_id, sequence, action_type, purpose,
-                               jurisdiction_origin, jurisdiction_basis, outcome,
-                               previous_event_hash, event_hash, asserted_at)
-    VALUES ('ev-2b', 'ag-1', 'own-1', 3, 'route.optimize', 'delivery', 'AR',
-            'owner_jurisdiction', 'SUCCESS', 'sha256:' || repeat('b', 64),
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('ev-2b', 'ag-1', 4, 'ACTION', 'sha256:' || repeat('b', 64),
             'sha256:' || repeat('3', 64), now())$$);
 
+SELECT assert_fails('CHAIN', 'a binding cannot fork the chain either', $$
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('ev-2c', 'ag-1', 4, 'BIND', 'sha256:' || repeat('b', 64),
+            'sha256:' || repeat('7', 64), now())$$);
+
 SELECT assert_fails('CHAIN', 'duplicate sequence rejected', $$
-    INSERT INTO action_events (id, agent_id, owner_id, sequence, action_type, purpose,
-                               jurisdiction_origin, jurisdiction_basis, outcome,
-                               event_hash, asserted_at)
-    VALUES ('ev-3', 'ag-1', 'own-1', 2, 'route.optimize', 'delivery', 'AR',
-            'owner_jurisdiction', 'SUCCESS', 'sha256:' || repeat('4', 64), now())$$);
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, event_hash, occurred_at)
+    VALUES ('ev-3', 'ag-1', 3, 'ACTION', 'sha256:' || repeat('4', 64), now())$$);
+
+SELECT assert_fails('CHAIN', 'one chain cannot carry the same event hash twice', $$
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('ev-3b', 'ag-1', 4, 'ACTION', 'sha256:' || repeat('2', 64),
+            'sha256:' || repeat('b', 64), now())$$);
+
+SELECT assert_fails('CHAIN', 'the chain is append-only', $$
+    UPDATE agent_chain_events SET event_hash = 'sha256:' || repeat('9', 64)
+     WHERE id = 'ev-2'$$);
+
+SELECT assert_fails('CHAIN', 'a chain event cannot be deleted', $$
+    DELETE FROM agent_chain_events WHERE id = 'ev-2'$$);
+
+-- An action row with no link in the chain would be an event outside history:
+-- verifiable on its own, invisible to anyone walking the chain.
+SELECT assert_fails('CHAIN', 'an action cannot exist outside the chain', $$
+    INSERT INTO action_events (id, agent_id, owner_id, action_type, purpose,
+                               jurisdiction_origin, jurisdiction_basis, outcome, asserted_at)
+    VALUES ('ev-orphan', 'ag-1', 'own-1', 'route.optimize', 'delivery', 'AR',
+            'owner_jurisdiction', 'SUCCESS', now())$$);
 
 SELECT assert_fails('PROTO', 'cross-border action without a target jurisdiction rejected', $$
-    INSERT INTO action_events (id, agent_id, owner_id, sequence, action_type, purpose,
+    INSERT INTO action_events (id, agent_id, owner_id, action_type, purpose,
                                jurisdiction_origin, jurisdiction_basis, cross_border, outcome,
-                               event_hash, asserted_at)
-    VALUES ('ev-4', 'ag-1', 'own-1', 4, 'infra.modify', 'remediation', 'AR',
-            'resource_location', true, 'SUCCESS', 'sha256:' || repeat('5', 64), now())$$);
+                               asserted_at)
+    VALUES ('ev-1', 'ag-1', 'own-1', 'infra.modify', 'remediation', 'AR',
+            'resource_location', true, 'SUCCESS', now())$$);
 
 SELECT assert_fails('PROTO', 'malformed UAI-ID rejected', $$
     INSERT INTO owners (id, uai_id, did, display_name, jurisdiction)
@@ -480,5 +514,75 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS  CRED  an ownership credential carries no expiry date';
 END $$;
+
+-- ── §9 binding ──────────────────────────────────────────────────────────────
+
+INSERT INTO binding_challenges (id, agent_id, operation, challenge, audience, expires_at)
+VALUES ('bch-1', 'ag-1', 'BIND_AGENT', 'challenge-for-the-bind', 'uai-agent-registry',
+        now() + interval '300 seconds');
+
+SELECT assert_fails('BIND', 'a challenge cannot be redirected to another operation', $$
+    UPDATE binding_challenges SET operation = 'UNBIND_AGENT' WHERE id = 'bch-1'$$);
+
+SELECT assert_fails('BIND', 'a challenge cannot be redirected to another agent', $$
+    UPDATE binding_challenges SET agent_id = 'ag-1', challenge = 'attacker-chosen'
+     WHERE id = 'bch-1'$$);
+
+SELECT assert_fails('BIND', 'a challenge window cannot be extended', $$
+    UPDATE binding_challenges SET expires_at = now() + interval '1 year' WHERE id = 'bch-1'$$);
+
+-- A bind that does not name the runtime it bound records who, but not where --
+-- and "where" is the half of the claim the operation exists to establish.
+SELECT assert_fails('BIND', 'a bind must name the runtime it bound', $$
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('bind-bad', 'ag-1', 4, 'BIND', 'sha256:' || repeat('2', 64),
+            'sha256:' || repeat('a', 64), now());
+    INSERT INTO agent_bindings (id, agent_id, operation, signature, signer_kid)
+    VALUES ('bind-bad', 'ag-1', 'BIND_AGENT', 'zSig',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1')$$);
+
+-- Section 9.3: without a continuity proof naming the key that made it,
+-- "unbind, rotate the key, rebind" would launder a stolen identity.
+SELECT assert_fails('BIND', 'a rebind without continuity is refused', $$
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('rebind-bad', 'ag-1', 4, 'REBIND', 'sha256:' || repeat('2', 64),
+            'sha256:' || repeat('c', 64), now());
+    INSERT INTO agent_bindings (id, agent_id, operation, signature, signer_kid)
+    VALUES ('rebind-bad', 'ag-1', 'REBIND_AGENT', 'zSig',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1')$$);
+
+SELECT assert_fails('BIND', 'a continuity proof must name the key that made it', $$
+    INSERT INTO agent_chain_events (id, agent_id, sequence, kind, previous_event_hash,
+                                    event_hash, occurred_at)
+    VALUES ('rebind-anon', 'ag-1', 4, 'REBIND', 'sha256:' || repeat('2', 64),
+            'sha256:' || repeat('d', 64), now());
+    INSERT INTO agent_bindings (id, agent_id, operation, continuity_proof, signature, signer_kid)
+    VALUES ('rebind-anon', 'ag-1', 'REBIND_AGENT', 'zContinuity', 'zSig',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1')$$);
+
+-- A binding outside the chain would be a state change nobody walking the
+-- history can see.
+SELECT assert_fails('BIND', 'a binding cannot exist outside the chain', $$
+    INSERT INTO agent_bindings (id, agent_id, operation, spiffe_id, svid_cert_hash,
+                                signature, signer_kid)
+    VALUES ('bind-orphan', 'ag-1', 'BIND_AGENT', 'spiffe://uai.world/x',
+            'sha256:' || repeat('8', 64), 'zSig',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1')$$);
+
+-- INV-006 reaches bindings too: unbinding is not deletion (section 9.2).
+SELECT assert_fails('BIND', 'a binding event cannot be deleted', $$
+    DELETE FROM agent_bindings WHERE agent_id = 'ag-1'$$);
+
+-- Two workloads cannot present the same SVID.
+INSERT INTO runtime_identities (id, agent_id, spiffe_id, cert_hash, expires_at)
+VALUES ('rt-1', 'ag-1', 'spiffe://uai.world/agents/01JY/i/aaaa',
+        'sha256:' || repeat('9', 64), now() + interval '1 hour');
+
+SELECT assert_fails('BIND', 'one SVID cannot back two runtime identities', $$
+    INSERT INTO runtime_identities (id, agent_id, spiffe_id, cert_hash, expires_at)
+    VALUES ('rt-2', 'ag-1', 'spiffe://uai.world/agents/01JY/i/aaaa',
+            'sha256:' || repeat('9', 64), now() + interval '1 hour')$$);
 
 ROLLBACK;
