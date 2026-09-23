@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
@@ -39,7 +40,12 @@ type Server struct {
 	// presented to another: without it, a federated deployment would honour a
 	// binding intended for a different operator.
 	audience string
-	now      func() time.Time
+	// bundle is the loaded, verified policy. Nil means no policy, which means
+	// no request can be authorized: §12.4 fails closed on the guardrail, and a
+	// PDP that permitted anything while it had no rules would be worse than
+	// one that was simply down.
+	bundle *pdp.Bundle
+	now    func() time.Time
 }
 
 // Option configures a Server.
@@ -55,6 +61,9 @@ func WithPolicyVersion(v string) Option { return func(srv *Server) { srv.policyV
 
 // WithAudience sets the registry identifier that binding statements must name.
 func WithAudience(a string) Option { return func(srv *Server) { srv.audience = a } }
+
+// WithBundle installs the verified policy bundle the PDP evaluates against.
+func WithBundle(b *pdp.Bundle) Option { return func(srv *Server) { srv.bundle = b } }
 
 // WithIssuer sets the credential issuer identity and its signing key.
 func WithIssuer(did string, signer uaicrypto.Signer) Option {
@@ -124,6 +133,16 @@ func (s *Server) Routes() http.Handler {
 			RequireIdempotency(s.db, path)))
 	}
 	mux.Handle("GET /v1/actions/{eventId}", Chain(http.HandlerFunc(s.getAction), CaptureBody))
+
+	// The PDP. §22.6 exempts it from idempotency on purpose: two evaluations of
+	// the same request may legitimately differ, because the policy, the agent's
+	// status or its grants can change between them, and replaying a stale
+	// decision would hide exactly that.
+	mux.Handle("POST /v1/policy/evaluate", Chain(
+		http.HandlerFunc(s.evaluate),
+		CaptureBody,
+		RequirePoP(s.db, uaicrypto.DomainDecision, s.scheme),
+	))
 
 	// Public and unauthenticated by design: verification must survive being
 	// linked from a public page.

@@ -27,6 +27,12 @@ const (
 	// domain would let a crafted attestation hash be presented as an identity's
 	// origin, which is the exact substitution domain separation exists to stop.
 	DomainRegistration Domain = "UAI-v1:registration"
+	// DomainPolicyBundle covers the M-of-N approval signatures over a GASC
+	// bundle (§12.1.1). It is distinct from DomainDecision because approving a
+	// body of rules and applying them to one request are different acts: a
+	// shared domain would let a decision signature be presented as an approval
+	// of the policy that produced it.
+	DomainPolicyBundle Domain = "UAI-v1:policy-bundle"
 	DomainChallenge    Domain = "UAI-v1:challenge"
 	DomainVote         Domain = "UAI-v1:vote"
 	DomainDecision     Domain = "UAI-v1:decision"
@@ -40,8 +46,8 @@ const (
 var knownDomains = map[Domain]bool{
 	DomainAttestation: true, DomainCredential: true, DomainDIDDocument: true,
 	DomainChallenge: true, DomainVote: true, DomainDecision: true,
-	DomainRegistration: true,
-	DomainQuarantine:   true, DomainRevocation: true, DomainCheckpoint: true,
+	DomainRegistration: true, DomainPolicyBundle: true,
+	DomainQuarantine: true, DomainRevocation: true, DomainCheckpoint: true,
 	DomainCommitment: true, DomainAudit: true,
 }
 

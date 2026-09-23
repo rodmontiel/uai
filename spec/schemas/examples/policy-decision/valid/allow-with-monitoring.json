@@ -49,5 +49,6 @@
     "kid": "did:web:pdp.uai.world#key-1",
     "domain": "UAI-v1:decision",
     "value": "zSigAbc"
-  }
+  },
+  "reason": "cross_border_critical_infrastructure_with_passport"
 }

@@ -1,0 +1,34 @@
+{
+  "policy_id": "GASC",
+  "policy_version": "2027.4",
+  "effective_date": "2027-04-01T00:00:00Z",
+  "jurisdictions": [
+    "*"
+  ],
+  "risk_classes": [
+    "INFORMATIONAL",
+    "LOW",
+    "MODERATE",
+    "HIGH",
+    "CRITICAL"
+  ],
+  "bundle_hash": "sha256:88d12542e7a7c4fdcb452ffc93fcac204fa6d6cf0b480397cb6d0a9f0aca5b74",
+  "approval_signatures": [
+    {
+      "signer": "did:web:council.uai.world#gasc-1",
+      "alg": "EdDSA",
+      "value": "pZKqeGq2IpPw9xjgFJW-apG3sKuk8hpxkXva8SdR7zxuB7F8hb3JE1d04gjAQVRzOvsR7Tgj79OkWZ3RlUkRAw"
+    },
+    {
+      "signer": "did:web:council.uai.world#gasc-2",
+      "alg": "EdDSA",
+      "value": "h71YFxCMj7fzo7Poy62hL6V1FSF4PsjkZFHJ8-9knJviyqZnclE_Tb92TxvJykQZtgcrpVm7nttMejDjIkhWDg"
+    },
+    {
+      "signer": "did:web:council.uai.world#gasc-3",
+      "alg": "EdDSA",
+      "value": "248WIEolYlyegxzpaefGIXdb5y5HpAt8XgYNfZ3gIO0h_6azOtSlZq6KEusFBTRUc2gKAsBNlC-tuvIu0ijeCA"
+    }
+  ],
+  "threshold": "3-of-5"
+}

@@ -857,13 +857,35 @@ components:
 
     PolicyEvaluationRequest:
       type: object
-      required: [agent_did, capability, purpose, jurisdiction]
+      required: [action, jurisdiction]
+      description: |
+        What the agent is ABOUT to do. There is deliberately no agent_did member: the identity
+        comes from the verified message signature and from nowhere else. A body field naming the
+        subject would make attribution a string the caller writes, which is exactly what INV-002
+        forbids, and a schema that required one would invite every implementation to trust it.
       properties:
-        agent_did: { type: string }
-        capability: { type: string }
-        purpose: { type: string }
-        resource: { type: string }
-        jurisdiction: { type: object }
+        action:
+          type: object
+          required: [capability, purpose]
+          properties:
+            capability: { type: string }
+            purpose: { type: string }
+            resource: { type: string }
+        jurisdiction:
+          type: object
+          required: [origin, cross_border]
+          properties:
+            origin: { type: string, pattern: '^[A-Z]{2}$' }
+            targets: { type: array, items: { type: string, pattern: '^[A-Z]{2}$' } }
+            cross_border: { type: boolean }
+            basis: { type: string }
+        harm_assessment:
+          type: array
+          items: { type: object }
+          description: Harm categories and severities the caller is declaring. Declared, not trusted - the PDP applies the bundle's thresholds to them.
+        passport:
+          type: object
+          description: Passport state at decision time, when the action crosses a border.
 
     AttestationReceipt:
       type: object

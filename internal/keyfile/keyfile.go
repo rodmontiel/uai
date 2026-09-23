@@ -102,3 +102,29 @@ func Load(path, kid string) (uaicrypto.Signer, error) {
 	}
 	return uaicrypto.NewEd25519Signer(priv, kid), nil
 }
+
+// PublicJWK returns the public half of a key file, for publishing in an
+// authority set.
+func PublicJWK(path string) (uaicrypto.JWK, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return uaicrypto.JWK{}, fmt.Errorf("keyfile: %w", err)
+	}
+	var doc privateJWK
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return uaicrypto.JWK{}, fmt.Errorf("keyfile: %s: %w", path, err)
+	}
+	// Derived from the private half rather than copied from the file: a public
+	// member that disagrees with the private key would publish a key nobody
+	// can verify against, and the mismatch would only surface much later.
+	seed, err := base64.RawURLEncoding.DecodeString(doc.D)
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return uaicrypto.JWK{}, fmt.Errorf("keyfile: %s: unusable private member", path)
+	}
+	jwk, err := uaicrypto.JWKFromPublic(ed25519.NewKeyFromSeed(seed).Public())
+	if err != nil {
+		return uaicrypto.JWK{}, err
+	}
+	jwk.Kid = doc.Kid
+	return jwk, nil
+}

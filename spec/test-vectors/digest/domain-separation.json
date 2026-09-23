@@ -87,6 +87,13 @@
       "payload_utf8": "{\"a\":1}",
       "signing_input_hex": "5541492d76313a726567697374726174696f6e007b2261223a317d",
       "digest": "sha256:5d0f0a5f95725fb856207386946d343f87064460e01a40f036b8c2a26743c67f"
+    },
+    {
+      "name": "domain UAI-v1:policy-bundle",
+      "domain": "UAI-v1:policy-bundle",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a706f6c6963792d62756e646c65007b2261223a317d",
+      "digest": "sha256:5489661a0ea096c606598b8752f24d8f9431b05e3bc466ba092c282616aa7b98"
     }
   ]
 }

@@ -11,6 +11,11 @@ PG_DSN ?= postgres://uai:uai@localhost:5432/uai?sslmode=disable
 # from verification failures rather than from a startup error.
 ISSUER_KEY ?= .keys/issuer.jwk
 ISSUER_DID ?= did:web:credentials.uai.world
+# The signed policy bundle. Editing a rule or a threshold without re-signing
+# makes `make policy-verify` fail, which is the point: policy cannot be changed
+# by whoever can write to the repository.
+POLICY_BUNDLE    ?= policy/gasc-2027.4
+POLICY_AUTHORITY ?= policy/authority.json
 
 ## ---------- container runtime ----------
 # Rootless Podman is the reference runtime: docs/adr/0001-podman-rootless-runtime.md.
@@ -97,6 +102,15 @@ issuer-key: ## Create the credential issuer signing key (once per deployment)
 		echo "invalidate every credential issued under it. Delete it deliberately first."; exit 1; }
 	$(GO) run ./tools/uai-keygen -out $(ISSUER_KEY) -did "$(ISSUER_DID)"
 
+.PHONY: policy-verify
+policy-verify: ## Verify the committed GASC bundle against the published authority set
+	$(GO) run ./tools/uai-policy verify -bundle $(POLICY_BUNDLE) -authority $(POLICY_AUTHORITY)
+
+.PHONY: policy-sign
+policy-sign: ## Re-sign the bundle (requires the governance keys; see docs/protocol/08-guardrail.md)
+	$(GO) run ./tools/uai-policy sign -bundle $(POLICY_BUNDLE) \
+		-keys .keys/gasc-1.jwk,.keys/gasc-2.jwk,.keys/gasc-3.jwk -threshold 3-of-5
+
 .PHONY: run-gateway
 run-gateway: $(ISSUER_KEY) ## Run the API gateway against the local stack
 	$(GO) run ./services/gateway -dsn "$(PG_DSN)" -addr :8080 -scheme http \
@@ -166,7 +180,7 @@ fmt: ## Format Go sources
 	$(GO) fmt ./...
 
 .PHONY: check
-check: build lint test conformance vectors-check ## Everything that must pass before a commit
+check: build lint test conformance vectors-check policy-verify ## Everything that must pass before a commit
 
 ## ---------- container images ----------
 .PHONY: image

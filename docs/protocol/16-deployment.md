@@ -123,7 +123,7 @@ implemented phases.
 
 | Added in | Services | Why not earlier |
 |---|---|---|
-| Phase 6 | `opa` | no policy bundle exists to serve yet |
+| ~~Phase 6~~ | ~~`opa`~~ | **Not needed.** The evaluator is embedded in the PDP ([ADR-0002](../adr/0002-opa-embedded-in-the-pdp.md)): §12.4's cached-bundle fail mode needs the PDP to hold the bundle itself, which a sidecar's cache cannot provide |
 | Phase 7 | `besu-1..4` (QBFT validators), `witness-1`, `witness-2` | nothing writes to a ledger or co-signs a checkpoint yet |
 | Phase 8 | `uai-web` | — |
 | Phase 10 | `uai-gateway` in-stack, for the ACME demo | the image exists now (`make image`); the demo wires it |

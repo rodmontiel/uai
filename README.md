@@ -161,6 +161,29 @@ Registration, binds, unbinds, rebinds and actions are **one hash chain**. A veri
 agent's history can see it was not participating between two actions, without consulting a
 second source.
 
+### Policy is data, and the data is signed
+
+No jurisdiction rule, harm threshold or assurance floor is compiled into a binary. All of it
+lives in `policy/gasc-2027.4/`, a bundle whose hash is approved by an M-of-N governance set.
+
+The bundle is committed **with** its manifest and signatures; the private approval keys are not.
+Editing a rule or a threshold therefore makes the build fail until somebody holding the
+governance keys signs it again — policy cannot be changed by whoever has write access to the
+source tree.
+
+```bash
+make policy-verify   # part of `make check`
+```
+
+Verifying a bundle and evaluating one are deliberately separate. Evaluation costs 33 third-party
+modules and lives only in the PDP; verification — the manifest, the hash, the M-of-N signatures,
+the version chain — is dependency-free, because **auditing a past decision must never require
+the machinery that made it** ([ADR-0002](docs/adr/0002-opa-embedded-in-the-pdp.md)).
+
+Every decision is recorded, including `ALLOW`, and every record names the exact policy version
+and bundle hash that produced it. A guardrail that only logs denials cannot answer "what was
+permitted and why", which is the question that matters after an incident.
+
 ## Design priorities
 
 In every trade-off, in this order:

@@ -159,7 +159,7 @@ func digestVectors() (any, error) {
 		uaicrypto.DomainAttestation, uaicrypto.DomainCredential, uaicrypto.DomainDIDDocument,
 		uaicrypto.DomainChallenge, uaicrypto.DomainVote, uaicrypto.DomainDecision,
 		uaicrypto.DomainQuarantine, uaicrypto.DomainRevocation, uaicrypto.DomainCheckpoint,
-		uaicrypto.DomainCommitment, uaicrypto.DomainAudit, uaicrypto.DomainRegistration,
+		uaicrypto.DomainCommitment, uaicrypto.DomainAudit, uaicrypto.DomainRegistration, uaicrypto.DomainPolicyBundle,
 	}
 	set := testvectors.Set[testvectors.DigestCase]{
 		VectorSet:   "uai-cs-1/digest",

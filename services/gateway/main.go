@@ -19,6 +19,7 @@ import (
 
 	"github.com/rodmontiel/uai/internal/api"
 	"github.com/rodmontiel/uai/internal/keyfile"
+	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
 )
 
@@ -29,6 +30,8 @@ func main() {
 		scheme    = flag.String("scheme", envOr("UAI_SCHEME", "https"), "external URL scheme used to rebuild the signed target URI")
 		issuerDID = flag.String("issuer-did", envOr("UAI_ISSUER_DID", "did:web:credentials.uai.world"), "DID of the credential issuer")
 		issuerKey = flag.String("issuer-key", envOr("UAI_ISSUER_KEY", ".keys/issuer.jwk"), "path to the issuer signing key")
+		bundleDir = flag.String("policy-bundle", envOr("UAI_POLICY_BUNDLE", "policy/gasc-2027.4"), "GASC bundle directory")
+		authority = flag.String("policy-authority", envOr("UAI_POLICY_AUTHORITY", "policy/authority.json"), "public approval set for policy bundles")
 	)
 	flag.Parse()
 
@@ -51,6 +54,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The policy bundle is required, and it is verified before it is compiled.
+	// A gateway that started without policy would have to answer every request
+	// with a fail-closed refusal anyway; failing at startup says why once
+	// instead of once per request.
+	auth, err := pdp.LoadAuthorityFile(*authority)
+	if err != nil {
+		slog.Error("no policy authority set", "err", err)
+		os.Exit(1)
+	}
+	bundle, err := pdp.Load(context.Background(), os.DirFS(*bundleDir), auth, time.Now())
+	if err != nil {
+		slog.Error("policy bundle rejected", "err", err, "dir", *bundleDir,
+			"hint", "a bundle edited without the governance keys no longer matches its manifest")
+		os.Exit(1)
+	}
+	slog.Info("policy loaded", "version", bundle.Version(), "hash", bundle.Hash())
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -69,6 +89,7 @@ func main() {
 		Handler: api.NewServer(db,
 			api.WithScheme(*scheme),
 			api.WithIssuer(*issuerDID, signer),
+			api.WithBundle(bundle),
 		).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,

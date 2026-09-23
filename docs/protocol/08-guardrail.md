@@ -201,6 +201,54 @@ passport_authorizes_autonomous if {
 Note the `default decision := DENY`: Rego's default-deny posture is load-bearing here, not
 stylistic.
 
+### 12.5.1 How the bundle is sealed, and what that costs
+
+The bundle hash is computed over a canonical map of **path to content digest**, not over an
+archive. Tar and zip carry ordering, timestamps and permissions that differ between the machine
+that built a bundle and the machine that checks it, and any of those differences would produce
+a different hash for identical policy. What is being committed to is the content at each path,
+so that is what is hashed:
+
+```text
+bundle_hash = SHA-256("UAI-v1:policy-bundle" || 0x00 || jcs({ "<path>": "sha256:<digest>", ... }))
+```
+
+`manifest.json` is excluded because it carries the hash, and `.signatures/` because they are
+made over it. Approval signatures are over the bundle hash under `UAI-v1:policy-bundle` — a
+domain of its own, because approving a body of rules and applying them to one request are
+different acts, and a shared domain would let a decision signature be presented as an approval
+of the policy that produced it.
+
+Three rules a verifier MUST apply, each of which exists because its absence is exploitable:
+
+| Rule | What it stops |
+|---|---|
+| Content is checked **before** signatures | A signature over the right hash says nothing about files that do not produce that hash. Reporting "signatures valid" for a tampered bundle would be worse than useless |
+| An approval from outside the authority set is **refused**, not ignored | Silently skipping unknown signers lets an attacker pad the count and hides a misconfiguration |
+| One signer may appear **once** | Counting a signer twice turns a 3-of-5 into a 1-of-5 for anyone holding one key |
+
+**The evaluator is embedded in the PDP, and bundle verification is not.** Verification is
+implemented in the dependency-free core precisely because a relying party auditing a past
+decision must never need the machinery that made it; the evaluator costs 33 third-party modules
+and lives only where fresh decisions are produced. [ADR-0002](../adr/0002-opa-embedded-in-the-pdp.md)
+records the measurement and the reasoning.
+
+### 12.5.2 The special role of a category is data, not a rule
+
+§12.2 gives `SAFETY_SYSTEM_BYPASS` a special role: it defaults to acting at every severity,
+because an attempt to disable attestation is the precondition for hiding everything else.
+
+That role is expressed in `data/taxonomy.json` as `min_severity: 0`, **not** as a rule naming
+the category. A rule that hard-coded a category name would be a policy decision compiled into
+the bundle's logic, which is the thing §12.1 exists to prevent: governance must be able to
+change how a category is treated by signing new data, not by editing code that a different set
+of people reviews.
+
+The same applies to restricted jurisdictions. `data/jurisdictions.json` ships with an **empty**
+restricted list, because which places are restricted is a political judgement with signatures
+behind it, and shipping a non-empty baseline would smuggle that judgement into a bundle nobody
+voted on.
+
 ## 12.6 Bundle distribution and rollout
 
 ```mermaid

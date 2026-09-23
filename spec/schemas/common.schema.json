@@ -87,6 +87,7 @@
         "UAI-v1:challenge",
         "UAI-v1:vote",
         "UAI-v1:decision",
+        "UAI-v1:policy-bundle",
         "UAI-v1:quarantine",
         "UAI-v1:revocation",
         "UAI-v1:checkpoint",

@@ -1,0 +1,9 @@
+{
+  "_comment": "Bootstrap groupings for the baseline bundle. 'restricted' is empty on purpose: which places are restricted is a governance decision with signatures behind it, and shipping a non-empty list here would smuggle a political judgement into a baseline nobody voted on.",
+  "restricted": [],
+  "member_countries": ["AR", "DE", "JP", "CA", "IN", "BR", "FR", "ES", "MX", "US"],
+  "treaty_groups": {
+    "EU": ["DE", "FR", "ES", "IT", "NL", "PT", "BE", "AT", "IE", "PL", "SE", "DK", "FI"],
+    "MERCOSUR": ["AR", "BR", "UY", "PY"]
+  }
+}

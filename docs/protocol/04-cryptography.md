@@ -51,6 +51,7 @@ exploited class of bug.
 | `UAI-v1:challenge` | Registration / binding challenge responses |
 | `UAI-v1:vote` | Human delegate votes |
 | `UAI-v1:decision` | Policy decision records |
+| `UAI-v1:policy-bundle` | M-of-N approval signatures over a GASC bundle |
 | `UAI-v1:quarantine` | Quarantine orders |
 | `UAI-v1:revocation` | Revocation decisions |
 | `UAI-v1:checkpoint` | Transparency log checkpoints |

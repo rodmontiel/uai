@@ -1,0 +1,35 @@
+{
+  "_comment": "Public keys of the GASC approval set. In production this set is read from UAIPolicyRegistry on-chain; here it is a file so the committed bundle can be verified by anyone who clones the repository.",
+  "keys": {
+    "did:web:council.uai.world#gasc-1": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "_qTLVE6A7cABOV_Yn586XWIAmlSwCpoBGfZpP9OQLk8",
+      "kid": "did:web:council.uai.world#gasc-1"
+    },
+    "did:web:council.uai.world#gasc-2": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "EV9kb6fczJEWXrQq9FBQ8hA_e680jZ56PL361X3yqSw",
+      "kid": "did:web:council.uai.world#gasc-2"
+    },
+    "did:web:council.uai.world#gasc-3": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "BJF-vbZCVXeCpeMAZ-IHP3hsEps_LOhJZQxK28kidNM",
+      "kid": "did:web:council.uai.world#gasc-3"
+    },
+    "did:web:council.uai.world#gasc-4": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "z5n2fTXu3wYbAPP9KOzOAa16B1NtL6K_boq6r64YHWI",
+      "kid": "did:web:council.uai.world#gasc-4"
+    },
+    "did:web:council.uai.world#gasc-5": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "v1QeX2f0F8k58JKmMxUeqfEj6pBbBR5vGbW8O4voVJ0",
+      "kid": "did:web:council.uai.world#gasc-5"
+    }
+  }
+}

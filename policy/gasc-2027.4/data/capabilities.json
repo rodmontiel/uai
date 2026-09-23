@@ -1,0 +1,15 @@
+{
+  "_comment": "Capability registry. Every capability an agent can be granted appears here with its risk class and the assurance floor below which it may not be exercised. A capability absent from this registry is refused: a floor that does not exist cannot be met.",
+  "registry": {
+    "route.optimize":              { "risk_class": "LOW",      "min_assurance": "UAI-AL0" },
+    "crm.customer.read":           { "risk_class": "MODERATE", "min_assurance": "UAI-AL1" },
+    "crm.customer.write":          { "risk_class": "MODERATE", "min_assurance": "UAI-AL2" },
+    "payments.transfer":           { "risk_class": "CRITICAL", "min_assurance": "UAI-AL3" },
+    "cloud.securitygroup.update":  { "risk_class": "CRITICAL", "min_assurance": "UAI-AL3" },
+    "cloud.instance.create":       { "risk_class": "HIGH",     "min_assurance": "UAI-AL2" },
+    "data.export":                 { "risk_class": "HIGH",     "min_assurance": "UAI-AL2" },
+    "email.send":                  { "risk_class": "MODERATE", "min_assurance": "UAI-AL1" },
+    "docs.read":                   { "risk_class": "LOW",      "min_assurance": "UAI-AL0" },
+    "actuator.command":            { "risk_class": "CRITICAL", "min_assurance": "UAI-AL3" }
+  }
+}

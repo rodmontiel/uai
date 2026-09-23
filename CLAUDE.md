@@ -47,7 +47,15 @@ declarado existe en el repo.
   regla de fork cubre ahora todo tipo de evento, no solo acciones.
 
   Atestiguar exige `ACTIVE`, y a `ACTIVE` se llega bindeando un runtime.
-- Fases 6–12: sin empezar.
+- **Fase 6 ✅** — motor de políticas. `pkg/policy` (verificación de bundles: hash, M-de-N,
+  cadena de versiones — sin dependencias), `internal/pdp` (OPA embebido), el bundle
+  `policy/gasc-2027.4` firmado 3-de-5, y `POST /v1/policy/evaluate` que firma y persiste cada
+  decisión con versión y hash de bundle (INV-009).
+
+  **El bundle commiteado trae su manifest y sus firmas; las claves de gobernanza no.** Editar
+  una regla o un umbral rompe `make policy-verify` hasta que alguien con esas claves lo vuelva
+  a firmar. La política no la cambia quien tiene acceso de escritura al repo.
+- Fases 7–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
 `-race` más las 35 aserciones de invariantes.
@@ -91,6 +99,9 @@ autores angostó el protocolo sin decirlo.
     está en `agent_chain_events`, quien recorre la historia no lo ve, y el estado al momento
     del evento hay que sacarlo de una segunda fuente — que es justo el trabajo que una cadena
     de hashes existe para evitar.
-13. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+13. **Auditar una decisión pasada nunca puede requerir la maquinaria que la tomó.** Por eso
+    `pkg/policy` verifica bundles sin dependencias y OPA vive solo en `internal/pdp`: quien
+    audita corre el camino liviano, quien decide carga los 33 módulos (ADR-0002).
+14. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.

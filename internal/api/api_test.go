@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/rodmontiel/uai/internal/api"
+	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/pop"
@@ -53,6 +54,8 @@ type env struct {
 	agent   store.Agent
 	signer  uaicrypto.Signer
 	ownerID string
+	pdpPub  any
+	bundle  *pdp.Bundle
 }
 
 func setup(t *testing.T) *env {
@@ -101,8 +104,35 @@ func setup(t *testing.T) *env {
 		t.Fatal(err)
 	}
 
-	return &env{db: db, srv: api.NewServer(db, api.WithScheme("http")).Routes(),
-		agent: agent, signer: signer, ownerID: ownerID}
+	// §6.10: ACTIVE means a runtime is bound. A fixture that claimed ACTIVE with
+	// nothing bound described a state the protocol does not have, and the policy
+	// engine noticed before we did.
+	if _, err := db.Pool().Exec(ctx, `
+		INSERT INTO runtime_identities (id, agent_id, spiffe_id, cert_hash, expires_at)
+		VALUES ($1,$2,$3,$4,$5)`,
+		"rt-"+ulid("R"), agent.ID,
+		"spiffe://uai.test/agents/"+agent.UAIID+"/i/"+nonce()[:8],
+		"sha256:"+strings.Repeat("d", 64), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	issuer, issuerPub, err := uaicrypto.GenerateEd25519Signer("did:web:pdp.uai.test#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := pdp.LoadAuthorityFile("../../policy/authority.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := pdp.Load(ctx, os.DirFS("../../policy/gasc-2027.4"), auth,
+		time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("the committed bundle must load: %v", err)
+	}
+	srv := api.NewServer(db, api.WithScheme("http"),
+		api.WithIssuer("did:web:pdp.uai.test", issuer), api.WithBundle(bundle))
+	return &env{db: db, srv: srv.Routes(), agent: agent, signer: signer, ownerID: ownerID,
+		pdpPub: issuerPub, bundle: bundle}
 }
 
 func b64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
@@ -150,6 +180,44 @@ func (e *env) post(t *testing.T, a attest.Attestation, idemKey string) *httptest
 func (e *env) postSigned(t *testing.T, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	return e.postSignedTo(t, e.srv, path, body)
+}
+
+// postSignedDomain signs under a specific PoP domain.
+func (e *env) postSignedDomain(t *testing.T, path string, body any, domain uaicrypto.Domain) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.postSignedDomainTo(t, e.srv, path, body, domain)
+}
+
+func (e *env) postSignedDomainTo(t *testing.T, srv http.Handler, path string, body any,
+	domain uaicrypto.Domain) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test"+path, strings.NewReader(string(raw)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-"+nonce())
+	if err := pop.SignRequest(e.signer, req, raw, domain, e.agent.UAIID, nonce()); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	return rec
+}
+
+// postUnsigned sends without proof of possession.
+func (e *env) postUnsigned(t *testing.T, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test"+path, strings.NewReader(string(raw)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, req)
+	return rec
 }
 
 // postSignedTo signs with THIS env's agent key but sends to another server, so

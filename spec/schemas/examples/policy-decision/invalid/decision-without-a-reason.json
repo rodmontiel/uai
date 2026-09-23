@@ -47,8 +47,7 @@
   "signature": {
     "alg": "EdDSA",
     "kid": "did:web:pdp.uai.world#key-1",
-    "domain": "UAI-v1:attestation",
+    "domain": "UAI-v1:decision",
     "value": "zSigAbc"
-  },
-  "reason": "baseline_allow"
+  }
 }
