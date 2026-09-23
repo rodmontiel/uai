@@ -1,0 +1,7 @@
+{
+  "no-binding-proof": "Without the embedded two-sided proof the credential is UAI asserting ownership on its own word, which is exactly what section 6.4.1 refuses to do.",
+  "one-sided-proof": "One signature proves one party's intent. Ownership is a relationship and needs both halves.",
+  "no-agent-key-carried": "The agent key travels inside the proof so a verifier never has to ask UAI whether the agent exists; without it the proof cannot be checked offline.",
+  "ownership-with-expiry": "Ownership holds until the agent is unbound, which is an event and not a date. An expiry would mean an agent silently loses the party that answers for it.",
+  "half-signed-in-wrong-domain": "Each half is a challenge response; a signature made in another domain must not count as one."
+}

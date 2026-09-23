@@ -15,17 +15,20 @@ import (
 	"github.com/rodmontiel/uai/internal/api"
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/pkg/challenge"
+	"github.com/rodmontiel/uai/pkg/credential"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
 // regEnv is a registration fixture: an owner that already has a key, because
 // ownership can only be PROVEN against a key the registry already holds.
 type regEnv struct {
-	db       *store.DB
-	srv      http.Handler
-	ownerID  string
-	ownerDID string
-	owner    uaicrypto.Signer
+	db        *store.DB
+	srv       http.Handler
+	ownerID   string
+	ownerDID  string
+	owner     uaicrypto.Signer
+	issuerDID string
+	issuerPub any
 }
 
 func setupReg(t *testing.T) *regEnv {
@@ -59,8 +62,14 @@ func setupReg(t *testing.T) *regEnv {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &regEnv{db: db, srv: api.NewServer(db, api.WithScheme("http")).Routes(),
-		ownerID: ownerID, ownerDID: ownerDID, owner: signer}
+	const issuerDID = "did:web:credentials.uai.test"
+	issuer, issuerPub, err := uaicrypto.GenerateEd25519Signer(issuerDID + "#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := api.NewServer(db, api.WithScheme("http"), api.WithIssuer(issuerDID, issuer))
+	return &regEnv{db: db, srv: srv.Routes(), ownerID: ownerID, ownerDID: ownerDID,
+		owner: signer, issuerDID: issuerDID, issuerPub: issuerPub}
 }
 
 func (e *regEnv) do(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
@@ -535,5 +544,134 @@ func TestMintedIdentityAnchorsItsChain(t *testing.T) {
 	// would mean the identity answers to a key nobody proved control of.
 	if storedTP != tp {
 		t.Errorf("stored key %s is not the key both parties proved: %s", storedTP, tp)
+	}
+}
+
+// TestRegistrationIssuesBothCredentials covers §8.2: an identity and its
+// credentials are created in one step.
+func TestRegistrationIssuesBothCredentials(t *testing.T) {
+	e := setupReg(t)
+	ch := e.open(t)
+	signer, jwk, tp := agentKeypair(t)
+	if rec := e.proveOwner(t, ch, tp); rec.Code != http.StatusAccepted {
+		t.Fatalf("owner proof: %s", rec.Body)
+	}
+	rec := e.proveAgent(t, ch, signer, jwk, tp)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("agent proof: %s", rec.Body)
+	}
+	var minted api.RegisteredAgent
+	if err := json.Unmarshal(rec.Body.Bytes(), &minted); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = e.do(t, http.MethodGet, "/v1/agents/"+minted.UAIID+"/credentials", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET credentials: %d %s", rec.Code, rec.Body)
+	}
+	var set api.AgentCredentials
+	if err := json.Unmarshal(rec.Body.Bytes(), &set); err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Credentials) != 2 {
+		t.Fatalf("got %d credentials, want 2", len(set.Credentials))
+	}
+
+	byType := map[string]credential.Credential{}
+	for _, raw := range set.Credentials {
+		var c credential.Credential
+		if err := json.Unmarshal(raw, &c); err != nil {
+			t.Fatal(err)
+		}
+		// Every credential must verify against the issuer that signed it.
+		if err := credential.Verify(e.issuerPub, c); err != nil {
+			t.Errorf("%v does not verify: %v", c.Type, err)
+		}
+		byType[c.Type[1]] = c
+	}
+	for _, want := range []string{credential.TypeIdentity, credential.TypeOwnership} {
+		if _, ok := byType[want]; !ok {
+			t.Fatalf("no %s was issued", want)
+		}
+	}
+
+	identity, err := credential.IdentityFrom(byType[credential.TypeIdentity])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.ID != minted.DID {
+		t.Errorf("identity credential names %s, want %s", identity.ID, minted.DID)
+	}
+	if identity.AgentKeyThumbprint != tp {
+		t.Errorf("identity credential names key %s, want %s", identity.AgentKeyThumbprint, tp)
+	}
+	// §8.4 again, this time in the document a relying party actually reads.
+	if identity.AssuranceLevel != "UAI-AL0" {
+		t.Errorf("assurance %q, want UAI-AL0", identity.AssuranceLevel)
+	}
+}
+
+// TestOwnershipCredentialStandsAlone is the §6.4.1 promise, end to end: a
+// relying party validates ownership from the document and the owner's key,
+// without asking UAI anything.
+func TestOwnershipCredentialStandsAlone(t *testing.T) {
+	e := setupReg(t)
+	ch := e.open(t)
+	signer, jwk, tp := agentKeypair(t)
+	if rec := e.proveOwner(t, ch, tp); rec.Code != http.StatusAccepted {
+		t.Fatalf("owner proof: %s", rec.Body)
+	}
+	rec := e.proveAgent(t, ch, signer, jwk, tp)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("agent proof: %s", rec.Body)
+	}
+	var minted api.RegisteredAgent
+	if err := json.Unmarshal(rec.Body.Bytes(), &minted); err != nil {
+		t.Fatal(err)
+	}
+	rec = e.do(t, http.MethodGet, "/v1/agents/"+minted.UAIID+"/credentials", nil)
+	var set api.AgentCredentials
+	if err := json.Unmarshal(rec.Body.Bytes(), &set); err != nil {
+		t.Fatal(err)
+	}
+
+	var ownership credential.Credential
+	for _, raw := range set.Credentials {
+		var c credential.Credential
+		if err := json.Unmarshal(raw, &c); err != nil {
+			t.Fatal(err)
+		}
+		if c.Type[1] == credential.TypeOwnership {
+			ownership = c
+		}
+	}
+	subject, err := credential.OwnershipFrom(ownership)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The owner's public key, as a relying party would obtain it from the
+	// owner. Nothing from UAI is consulted below this line.
+	ownerPub := e.owner.Public()
+	if err := credential.VerifyOwnership(subject, ownerPub); err != nil {
+		t.Fatalf("the embedded two-sided proof must verify standalone: %v", err)
+	}
+	if subject.ID != minted.DID {
+		t.Errorf("ownership credential names %s, want %s", subject.ID, minted.DID)
+	}
+	if subject.OwnerDID != e.ownerDID {
+		t.Errorf("ownership credential names owner %s, want %s", subject.OwnerDID, e.ownerDID)
+	}
+	if ownership.ValidUntil != nil {
+		t.Error("ownership must hold until unbound, not until a date nobody chose")
+	}
+
+	// And a relying party holding the WRONG owner key must not be convinced.
+	_, other, err := uaicrypto.GenerateEd25519Signer(e.ownerDID + "#key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := credential.VerifyOwnership(subject, other); err == nil {
+		t.Error("the ownership proof verified against a key the owner does not hold")
 	}
 }

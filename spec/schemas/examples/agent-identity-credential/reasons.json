@@ -1,0 +1,7 @@
+{
+  "unsigned": "A credential without a proof asserts nothing; it is a JSON document with claims in it.",
+  "proof-in-wrong-domain": "A proof made in the attestation domain must not be presentable as a credential proof, which is the whole purpose of domain separation.",
+  "no-agent-key": "A credential that names an agent but not its key cannot be tied to anything the agent signs.",
+  "never-expires": "An identity credential that never expires is one a verifier is never forced to re-check.",
+  "unknown-assurance-level": "Assurance levels are a closed vocabulary; an unknown one would be read as 'higher than the highest' by a naive comparison."
+}

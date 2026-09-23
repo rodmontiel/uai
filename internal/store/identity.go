@@ -149,6 +149,23 @@ func insertAgent(ctx context.Context, tx pgx.Tx, a Agent, key AgentKey) error {
 	}
 }
 
+// OrganizationDIDByID returns an organization's DID, or "" when there is none.
+//
+// Empty rather than an error for the no-organization case: an individual owner
+// registering their own agent is ordinary, and a credential must not assert
+// membership in an organization named "".
+func (db *DB) OrganizationDIDByID(ctx context.Context, orgID string) (string, error) {
+	if orgID == "" {
+		return "", nil
+	}
+	var did string
+	err := db.pool.QueryRow(ctx, `SELECT did FROM organizations WHERE id = $1`, orgID).Scan(&did)
+	if err != nil {
+		return "", classify(err)
+	}
+	return did, nil
+}
+
 // AgentByUAIID loads an agent by its UAI-ID.
 func (db *DB) AgentByUAIID(ctx context.Context, uaiID string) (Agent, error) {
 	var a Agent

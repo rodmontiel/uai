@@ -419,4 +419,66 @@ BEGIN
     RAISE NOTICE 'PASS  REG  a registration with both proofs mints exactly once';
 END $$;
 
+-- ── §8.2 credentials issued with an identity ────────────────────────────────
+
+INSERT INTO credentials (id, credential_type, subject_did, issuer_did, agent_id, owner_id,
+                         credential_hash, document, valid_from, valid_until)
+VALUES ('cred-identity-1', 'AgentIdentityCredential',
+        'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', 'did:web:credentials.uai.world',
+        'ag-1', 'own-1', 'sha256:' || repeat('c', 64),
+        '{"type":["VerifiableCredential","AgentIdentityCredential"]}'::jsonb,
+        now(), now() + interval '365 days');
+
+INSERT INTO credentials (id, credential_type, subject_did, issuer_did, agent_id, owner_id,
+                         credential_hash, document, valid_from)
+VALUES ('cred-ownership-1', 'AgentOwnershipCredential',
+        'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', 'did:web:credentials.uai.world',
+        'ag-1', 'own-1', 'sha256:' || repeat('d', 64),
+        '{"type":["VerifiableCredential","AgentOwnershipCredential"]}'::jsonb, now());
+
+-- INV-006: a credential that was ever issued stays resolvable. Deleting one
+-- would make every signature it vouched for unverifiable after the fact, which
+-- is indistinguishable from the credential never having existed.
+SELECT assert_fails('CRED', 'an issued credential cannot be deleted', $$
+    DELETE FROM credentials WHERE id = 'cred-identity-1'$$);
+
+-- CASCADE deliberately: a plain TRUNCATE is refused by the foreign key alone,
+-- so it would pass this assertion without the guard ever running. An assertion
+-- that passes for the wrong reason is worse than no assertion.
+SELECT assert_fails('CRED', 'credentials cannot be truncated, even with CASCADE', $$
+    TRUNCATE credentials CASCADE$$);
+
+-- The hash identifies the SIGNED document. Two rows sharing one hash would mean
+-- an index keyed by it could return either, so one credential could be
+-- substituted for another wherever that index is consulted.
+SELECT assert_fails('CRED', 'two credentials cannot share one hash', $$
+    INSERT INTO credentials (id, credential_type, subject_did, issuer_did, agent_id,
+                             credential_hash, document, valid_from)
+    VALUES ('cred-clone', 'AgentIdentityCredential',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', 'did:web:credentials.uai.world',
+            'ag-1', 'sha256:' || repeat('c', 64), '{}'::jsonb, now())$$);
+
+SELECT assert_fails('CRED', 'a credential hash must be a real digest', $$
+    INSERT INTO credentials (id, credential_type, subject_did, issuer_did, agent_id,
+                             credential_hash, document, valid_from)
+    VALUES ('cred-badhash', 'AgentIdentityCredential',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', 'did:web:credentials.uai.world',
+            'ag-1', 'deadbeef', '{}'::jsonb, now())$$);
+
+SELECT assert_fails('CRED', 'a credential cannot expire before it starts', $$
+    INSERT INTO credentials (id, credential_type, subject_did, issuer_did, agent_id,
+                             credential_hash, document, valid_from, valid_until)
+    VALUES ('cred-backwards', 'AgentIdentityCredential',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', 'did:web:credentials.uai.world',
+            'ag-1', 'sha256:' || repeat('e', 64), '{}'::jsonb,
+            now(), now() - interval '1 day')$$);
+
+DO $$
+BEGIN
+    IF (SELECT valid_until FROM credentials WHERE id = 'cred-ownership-1') IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL  CRED  ownership must hold until unbound, not until a date';
+    END IF;
+    RAISE NOTICE 'PASS  CRED  an ownership credential carries no expiry date';
+END $$;
+
 ROLLBACK;

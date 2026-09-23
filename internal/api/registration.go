@@ -69,14 +69,15 @@ type ProofSubmission struct {
 
 // RegisteredAgent is the identity card (§8.3).
 type RegisteredAgent struct {
-	UAIID              string `json:"uai_id"`
-	DID                string `json:"did"`
-	LogicalName        string `json:"logical_name,omitempty"`
-	Status             string `json:"status"`
-	AssuranceLevel     string `json:"assurance_level,omitempty"`
-	IdentityCommitment string `json:"identity_commitment,omitempty"`
-	PolicyVersion      string `json:"policy_version,omitempty"`
-	GenesisEventHash   string `json:"genesis_event_hash,omitempty"`
+	UAIID              string   `json:"uai_id"`
+	DID                string   `json:"did"`
+	LogicalName        string   `json:"logical_name,omitempty"`
+	Status             string   `json:"status"`
+	AssuranceLevel     string   `json:"assurance_level,omitempty"`
+	IdentityCommitment string   `json:"identity_commitment,omitempty"`
+	PolicyVersion      string   `json:"policy_version,omitempty"`
+	GenesisEventHash   string   `json:"genesis_event_hash,omitempty"`
+	Credentials        []string `json:"credentials,omitempty"`
 }
 
 // PendingRegistration is the 202 response to the first of the two proofs.
@@ -411,15 +412,32 @@ func (s *Server) mint(w http.ResponseWriter, r *http.Request, reg store.Registra
 		ID: "key-" + id.ULID().String(), KeyID: "key-1", Alg: alg,
 		PublicJWK: reg.AgentPublicJWK, Protection: "SOFTWARE", ValidFrom: now,
 	}
-	if err := s.db.MintAgent(r.Context(), reg.ID, agent, key, now); err != nil {
+	orgDID, err := s.db.OrganizationDIDByID(r.Context(), reg.OrganizationID)
+	if err != nil {
+		WriteStoreError(w, r, err)
+		return
+	}
+	// §8.2 issues the identity and its credentials in the same step, so this
+	// fails the whole mint rather than producing an identity nobody can verify.
+	creds, err := s.issueRegistrationCredentials(reg, agent, id, orgDID, now)
+	if err != nil {
+		WriteProblem(w, r, http.StatusInternalServerError, "UAI_CREDENTIAL_ISSUANCE_FAILED", err.Error(),
+			WithRemediation("The registration is still open; retry once the issuer is available."))
+		return
+	}
+	if err := s.db.MintAgentWithCredentials(r.Context(), reg.ID, agent, key, creds, now); err != nil {
 		writeRegistrationError(w, r, err)
 		return
+	}
+	issued := make([]string, 0, len(creds))
+	for _, c := range creds {
+		issued = append(issued, c.Type)
 	}
 	WriteJSON(w, http.StatusCreated, RegisteredAgent{
 		UAIID: agent.UAIID, DID: agent.DID, LogicalName: agent.LogicalName,
 		Status: agent.Status, AssuranceLevel: agent.AssuranceLevel,
 		IdentityCommitment: agent.IdentityCommitment, PolicyVersion: agent.PolicyVersion,
-		GenesisEventHash: agent.GenesisEventHash,
+		GenesisEventHash: agent.GenesisEventHash, Credentials: issued,
 	})
 }
 

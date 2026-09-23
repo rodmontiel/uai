@@ -125,6 +125,23 @@ Registration is also the only write path in UAI without proof of possession, bec
 establishing the agent's key is what it does. That is safe because it mints nothing: an
 unanswered registration leaves no identifier, no DID and no record any verifier can see.
 
+### Credentials that do not depend on us
+
+Registration issues an `AgentIdentityCredential` and an `AgentOwnershipCredential` in the same
+transaction that mints the identity. Both are W3C Verifiable Credentials 2.0 with Data Integrity
+proofs.
+
+The ownership credential **embeds the two registration signatures verbatim**. A relying party
+validates ownership from that document and the owner's public key alone — our signature on it
+attests only that we witnessed the exchange and minted an identifier. A credential that only
+means something while our API is reachable would be an API response with extra steps, and it
+would put UAI's uptime and honesty back into the trust equation this protocol exists to take
+them out of.
+
+```bash
+make issuer-key   # once per deployment; the gateway refuses to start without it
+```
+
 ## Design priorities
 
 In every trade-off, in this order:

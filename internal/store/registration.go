@@ -267,10 +267,10 @@ func (db *DB) MintAgent(ctx context.Context, regID string, a Agent, key AgentKey
 			return err
 		}
 		if cur.Minted() {
-			return fmt.Errorf("%w: %s is already %s", ErrRegistrationClosed, regID, cur.MintedAgentID)
+			return errRegistrationClosed(regID, cur.MintedAgentID)
 		}
 		if !cur.Complete() {
-			return fmt.Errorf("%w: %s still needs both proofs", ErrConflict, regID)
+			return errNeedsBothProofs(regID)
 		}
 		if err := insertAgent(ctx, tx, a, key); err != nil {
 			return err
@@ -295,4 +295,12 @@ func (db *DB) PurgeExpiredRegistrations(ctx context.Context, before time.Time) (
 		return 0, classify(err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+func errRegistrationClosed(regID, agentID string) error {
+	return fmt.Errorf("%w: %s is already %s", ErrRegistrationClosed, regID, agentID)
+}
+
+func errNeedsBothProofs(regID string) error {
+	return fmt.Errorf("%w: %s still needs both proofs", ErrConflict, regID)
 }

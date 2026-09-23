@@ -36,65 +36,179 @@
       "pattern": "^did:[a-z0-9]+:[A-Za-z0-9._%:-]+#[A-Za-z0-9._-]+$",
       "description": "A DID with a verification-method fragment."
     },
-    "isoCountry": { "type": "string", "pattern": "^[A-Z]{2}$" },
-    "assuranceLevel": { "enum": ["UAI-AL0", "UAI-AL1", "UAI-AL2", "UAI-AL3"] },
-    "riskClass": { "enum": ["INFORMATIONAL", "LOW", "MODERATE", "HIGH", "CRITICAL"] },
-    "harmCategory": {
+    "isoCountry": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "assuranceLevel": {
       "enum": [
-        "PHYSICAL_HARM", "CYBER_HARM", "PRIVACY_HARM", "FINANCIAL_HARM", "ENVIRONMENTAL_HARM",
-        "CRITICAL_INFRASTRUCTURE", "FRAUD_OR_DECEPTION", "UNAUTHORIZED_ACCESS", "DATA_EXFILTRATION",
-        "HUMAN_RIGHTS_RISK", "SAFETY_SYSTEM_BYPASS", "MALICIOUS_AUTONOMOUS_PROPAGATION"
+        "UAI-AL0",
+        "UAI-AL1",
+        "UAI-AL2",
+        "UAI-AL3"
       ]
     },
-    "severity": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "riskClass": {
+      "enum": [
+        "INFORMATIONAL",
+        "LOW",
+        "MODERATE",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "harmCategory": {
+      "enum": [
+        "PHYSICAL_HARM",
+        "CYBER_HARM",
+        "PRIVACY_HARM",
+        "FINANCIAL_HARM",
+        "ENVIRONMENTAL_HARM",
+        "CRITICAL_INFRASTRUCTURE",
+        "FRAUD_OR_DECEPTION",
+        "UNAUTHORIZED_ACCESS",
+        "DATA_EXFILTRATION",
+        "HUMAN_RIGHTS_RISK",
+        "SAFETY_SYSTEM_BYPASS",
+        "MALICIOUS_AUTONOMOUS_PROPAGATION"
+      ]
+    },
+    "severity": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
     "domain": {
       "enum": [
-        "UAI-v1:attestation", "UAI-v1:credential", "UAI-v1:did-document", "UAI-v1:challenge",
-        "UAI-v1:vote", "UAI-v1:decision", "UAI-v1:quarantine", "UAI-v1:revocation",
-        "UAI-v1:checkpoint", "UAI-v1:commitment", "UAI-v1:audit"
+        "UAI-v1:attestation",
+        "UAI-v1:credential",
+        "UAI-v1:did-document",
+        "UAI-v1:registration",
+        "UAI-v1:challenge",
+        "UAI-v1:vote",
+        "UAI-v1:decision",
+        "UAI-v1:quarantine",
+        "UAI-v1:revocation",
+        "UAI-v1:checkpoint",
+        "UAI-v1:commitment",
+        "UAI-v1:audit"
       ],
       "description": "Domain separation string. A verifier MUST reject a signature whose domain does not match the context it is being verified in, even when the signature is otherwise valid."
     },
     "signature": {
       "type": "object",
-      "required": ["alg", "kid", "domain", "value"],
+      "required": [
+        "alg",
+        "kid",
+        "domain",
+        "value"
+      ],
       "additionalProperties": false,
       "properties": {
-        "alg": { "enum": ["EdDSA", "ES256", "ES384"] },
-        "kid": { "$ref": "#/$defs/didUrl" },
-        "domain": { "$ref": "#/$defs/domain" },
-        "value": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "base64url, no padding" }
+        "alg": {
+          "enum": [
+            "EdDSA",
+            "ES256",
+            "ES384"
+          ]
+        },
+        "kid": {
+          "$ref": "#/$defs/didUrl"
+        },
+        "domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "base64url, no padding"
+        }
       }
     },
     "policyReference": {
       "type": "object",
-      "required": ["version", "bundle_hash"],
+      "required": [
+        "version",
+        "bundle_hash"
+      ],
       "properties": {
-        "version": { "type": "string", "minLength": 1, "examples": ["GASC-2027.4"] },
-        "bundle_hash": { "$ref": "#/$defs/sha256Digest" }
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "GASC-2027.4"
+          ]
+        },
+        "bundle_hash": {
+          "$ref": "#/$defs/sha256Digest"
+        }
       },
       "description": "INV-009: every guardrail decision names the exact policy version in force. Both fields are mandatory wherever a policy was consulted."
     },
     "jurisdictionContext": {
       "type": "object",
-      "required": ["origin", "targets", "cross_border", "basis"],
+      "required": [
+        "origin",
+        "targets",
+        "cross_border",
+        "basis"
+      ],
       "properties": {
-        "origin": { "$ref": "#/$defs/isoCountry" },
-        "targets": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
-        "data_locations": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
-        "subject_jurisdictions": { "type": "array", "items": { "$ref": "#/$defs/isoCountry" } },
-        "cross_border": { "type": "boolean" },
+        "origin": {
+          "$ref": "#/$defs/isoCountry"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/isoCountry"
+          }
+        },
+        "data_locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/isoCountry"
+          }
+        },
+        "subject_jurisdictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/isoCountry"
+          }
+        },
+        "cross_border": {
+          "type": "boolean"
+        },
         "basis": {
-          "enum": ["owner_jurisdiction", "execution_region", "subject_jurisdiction",
-                   "resource_location", "data_location", "infrastructure_owner", "declared_consequence"],
+          "enum": [
+            "owner_jurisdiction",
+            "execution_region",
+            "subject_jurisdiction",
+            "resource_location",
+            "data_location",
+            "infrastructure_owner",
+            "declared_consequence"
+          ],
           "description": "Why the system concluded what it concluded. Never derived from the execution IP alone."
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "cross_border": { "const": true } }, "required": ["cross_border"] },
+          "if": {
+            "properties": {
+              "cross_border": {
+                "const": true
+              }
+            },
+            "required": [
+              "cross_border"
+            ]
+          },
           "then": {
-            "properties": { "targets": { "minItems": 1 } },
+            "properties": {
+              "targets": {
+                "minItems": 1
+              }
+            },
             "description": "A cross-border action must name at least one target jurisdiction, or it cannot be audited against passport scope."
           }
         }

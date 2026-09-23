@@ -142,6 +142,22 @@ selective disclosure matters.
 `AgentSafetyAttestation` deserves a warning in its own schema description: it records that an
 evaluation *was performed and by whom*, never that the agent *is safe* (P1).
 
+**On the `AgentOwnershipCredential` issuer.** The table above says "Owner (self-issued)", and
+that cannot be taken literally: a Data Integrity proof covers the credential document, and at
+issuance time the owner may have proved its half minutes earlier and gone offline. Waiting for
+the owner to come back would make registration a multi-session ceremony.
+
+What UAI issues instead is strictly stronger than a self-issued assertion. The credential is
+issued by the credential service, and its `credentialSubject.bindingProof` **embeds the two
+registration signatures verbatim** — the owner's and the agent's, each over a statement naming
+the same agent key and the same owner. A relying party checks those two signatures directly and
+reaches a verdict on ownership without trusting the issuer at all; the issuer's own proof
+attests only that the exchange was witnessed and an identifier was minted.
+
+So the promise of [6.4.1](#641-ownership-is-proven-not-declared) — *a verifier can check
+ownership without contacting UAI* — is kept by the embedded proof rather than by the issuer
+field. That is the substance of the rule; the issuer field was the shorthand.
+
 ### 6.4.1 Ownership is proven, not declared
 
 `AgentOwnershipCredential` requires a two-sided proof, otherwise anyone could claim anyone's

@@ -23,3 +23,6 @@ raw/
 .DS_Store
 .idea/
 *.swp
+
+# issuer signing key: never committed
+.keys/

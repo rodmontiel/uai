@@ -25,7 +25,13 @@ type Server struct {
 	// the same idea one layer down: a record that cannot say which rules
 	// produced it cannot be audited later.
 	policyVersion string
-	now           func() time.Time
+	// issuer signs the credentials UAI issues. There is no default and no
+	// fallback: a server that quietly issued unsigned credentials, or signed
+	// them with a key generated at boot, would hand out documents that stop
+	// verifying the next time it restarts.
+	issuer    uaicrypto.Signer
+	issuerDID string
+	now       func() time.Time
 }
 
 // Option configures a Server.
@@ -38,6 +44,11 @@ func WithScheme(s string) Option { return func(srv *Server) { srv.scheme = s } }
 
 // WithPolicyVersion sets the GASC bundle version recorded on new identities.
 func WithPolicyVersion(v string) Option { return func(srv *Server) { srv.policyVersion = v } }
+
+// WithIssuer sets the credential issuer identity and its signing key.
+func WithIssuer(did string, signer uaicrypto.Signer) Option {
+	return func(srv *Server) { srv.issuerDID, srv.issuer = did, signer }
+}
 
 // WithClock overrides the clock, for tests.
 func WithClock(f func() time.Time) Option { return func(srv *Server) { srv.now = f } }
@@ -86,6 +97,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("GET /v1/agents/{id}", Chain(http.HandlerFunc(s.getAgent), CaptureBody))
 	mux.Handle("GET /v1/agents/{id}/events", Chain(http.HandlerFunc(s.getEvents), CaptureBody))
+	mux.Handle("GET /v1/agents/{id}/credentials", Chain(http.HandlerFunc(s.getCredentials), CaptureBody))
 	mux.Handle("GET /v1/actions/{eventId}", Chain(http.HandlerFunc(s.getAction), CaptureBody))
 
 	// Public and unauthenticated by design: verification must survive being

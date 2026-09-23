@@ -1,0 +1,57 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://uai.world/ns/credentials/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "AgentOwnershipCredential"
+  ],
+  "id": "urn:uai:credential:01JY8RB2D3E4F5G6H7J8K9M0N1",
+  "issuer": "did:web:credentials.uai.world",
+  "validFrom": "2026-09-22T14:02:04Z",
+  "credentialSubject": {
+    "id": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+    "ownerDid": "did:uai:owner:01JY8R9ZB00000000000000000",
+    "orgDid": "did:web:acme-robotics.example",
+    "effectiveFrom": "2026-09-22T14:02:04Z",
+    "bindingProof": {
+      "registrationId": "reg_01JY8R9ZAF392N7QX2T81JH6KM",
+      "agentKeyThumbprint": "sha256:3f9a2c3f9a2c3f9a2c3f9a2c3f9a2c3f9a2c3f9a2c3f9a2c3f9a2c3f9a2cabcd",
+      "agentPublicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+      },
+      "ownerKeyId": "did:uai:owner:01JY8R9ZB00000000000000000#key-1",
+      "ownerProof": {
+        "challenge": "0hR2kPzXqN7wLmVtB4cYdF6sJgA1eTuC",
+        "signature": {
+          "alg": "EdDSA",
+          "kid": "did:uai:owner:01JY8R9ZB00000000000000000#key-1",
+          "domain": "UAI-v1:challenge",
+          "value": "Zx1hQ8fT2mKpR7vLsW4bN6yD0jC3aE5gU9iO_XrYtZnPhVuJlBdFkSwMqAgCeI"
+        }
+      },
+      "agentProof": {
+        "challenge": "9sK4mWfDpQ1nZxR8vLbG3yHtJ5cEuA7o",
+        "signature": {
+          "alg": "EdDSA",
+          "kid": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1",
+          "domain": "UAI-v1:challenge",
+          "value": "Zx1hQ8fT2mKpR7vLsW4bN6yD0jC3aE5gU9iO_XrYtZnPhVuJlBdFkSwMqAgCeI"
+        }
+      }
+    }
+  },
+  "proof": {
+    "type": "DataIntegrityProof",
+    "cryptosuite": "eddsa-jcs-2022",
+    "created": "2026-09-22T14:02:04Z",
+    "verificationMethod": "did:web:credentials.uai.world#key-1",
+    "proofPurpose": "assertionMethod",
+    "domain": "UAI-v1:credential",
+    "proofValue": "z4oey5q7WcH9NsRpXFvZtL3mBd8kYgQ2eJrTuA6hVwCxSnPbGfDzM1iK"
+  },
+  "validUntil": "2027-09-22T14:02:04Z"
+}

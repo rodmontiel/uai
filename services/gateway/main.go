@@ -18,14 +18,17 @@ import (
 	"time"
 
 	"github.com/rodmontiel/uai/internal/api"
+	"github.com/rodmontiel/uai/internal/keyfile"
 	"github.com/rodmontiel/uai/internal/store"
 )
 
 func main() {
 	var (
-		addr   = flag.String("addr", envOr("UAI_ADDR", ":8080"), "listen address")
-		dsn    = flag.String("dsn", os.Getenv("PG_DSN"), "PostgreSQL connection string")
-		scheme = flag.String("scheme", envOr("UAI_SCHEME", "https"), "external URL scheme used to rebuild the signed target URI")
+		addr      = flag.String("addr", envOr("UAI_ADDR", ":8080"), "listen address")
+		dsn       = flag.String("dsn", os.Getenv("PG_DSN"), "PostgreSQL connection string")
+		scheme    = flag.String("scheme", envOr("UAI_SCHEME", "https"), "external URL scheme used to rebuild the signed target URI")
+		issuerDID = flag.String("issuer-did", envOr("UAI_ISSUER_DID", "did:web:credentials.uai.world"), "DID of the credential issuer")
+		issuerKey = flag.String("issuer-key", envOr("UAI_ISSUER_KEY", ".keys/issuer.jwk"), "path to the issuer signing key")
 	)
 	flag.Parse()
 
@@ -34,6 +37,17 @@ func main() {
 
 	if *dsn == "" {
 		slog.Error("no database configured", "hint", "set PG_DSN or pass -dsn")
+		os.Exit(1)
+	}
+
+	// The issuer key is required, not optional. Starting without one would mean
+	// discovering at the first registration that no credential can be issued --
+	// and the alternative, generating a key at boot, is worse: it hands out
+	// credentials that stop verifying at the next restart.
+	signer, err := keyfile.Load(*issuerKey, *issuerDID+"#key-1")
+	if err != nil {
+		slog.Error("no credential issuer key", "err", err,
+			"hint", "create one with: go run ./tools/uai-keygen -did "+*issuerDID)
 		os.Exit(1)
 	}
 
@@ -51,8 +65,11 @@ func main() {
 	// relative URL, and reconstructing the wrong absolute target makes every
 	// signature verify against a resource the caller never addressed.
 	srv := &http.Server{
-		Addr:              *addr,
-		Handler:           api.NewServer(db, api.WithScheme(*scheme)).Routes(),
+		Addr: *addr,
+		Handler: api.NewServer(db,
+			api.WithScheme(*scheme),
+			api.WithIssuer(*issuerDID, signer),
+		).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

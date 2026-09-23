@@ -1,0 +1,28 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://uai.world/ns/credentials/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "AgentOwnershipCredential"
+  ],
+  "id": "urn:uai:credential:01JY8RB2D3E4F5G6H7J8K9M0N1",
+  "issuer": "did:web:credentials.uai.world",
+  "validFrom": "2026-09-22T14:02:04Z",
+  "credentialSubject": {
+    "id": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+    "ownerDid": "did:uai:owner:01JY8R9ZB00000000000000000",
+    "orgDid": "did:web:acme-robotics.example",
+    "effectiveFrom": "2026-09-22T14:02:04Z"
+  },
+  "proof": {
+    "type": "DataIntegrityProof",
+    "cryptosuite": "eddsa-jcs-2022",
+    "created": "2026-09-22T14:02:04Z",
+    "verificationMethod": "did:web:credentials.uai.world#key-1",
+    "proofPurpose": "assertionMethod",
+    "domain": "UAI-v1:credential",
+    "proofValue": "z4oey5q7WcH9NsRpXFvZtL3mBd8kYgQ2eJrTuA6hVwCxSnPbGfDzM1iK"
+  }
+}

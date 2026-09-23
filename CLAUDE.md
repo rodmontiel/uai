@@ -83,3 +83,10 @@ autores angostó el protocolo sin decirlo.
 10. **Ninguna imagen puede depender de una feature de build específica de un vendor.** Las
     imágenes son OCI, se construyen rootless y el build tiene que ser reproducible: dos `make
     image` seguidos dan el mismo image id.
+11. **La clave del emisor nunca se genera al arrancar.** Una clave que cambia en cada reinicio
+    emite credenciales que dejan de verificar, y el operador se entera por fallas de
+    verificación en vez de por un error de arranque. `make issuer-key` la crea una vez, y el
+    gateway se niega a arrancar sin ella.
+12. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
+    es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
+    ecuación de confianza que el protocolo existe para sacarlas.

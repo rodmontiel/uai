@@ -145,6 +145,27 @@ Two digests are derived from this record and they are not interchangeable:
   registry, and a commitment whose salt was discarded could never be opened — which would make
   it decorative rather than evidence.
 
+### 8.3.1 Credentials issued with the identity
+
+Minting an identity and issuing its credentials is **one transaction**. An identity that exists
+without the credentials attesting to it would occupy an identifier forever while being
+unverifiable by anyone — the worst of both outcomes — so a failure to issue fails the whole
+registration and leaves the draft open for a retry.
+
+| Credential | Expiry | Why |
+|---|---|---|
+| `AgentIdentityCredential` | 12 months | A credential that never expires is one a verifier is never forced to re-check |
+| `AgentOwnershipCredential` | none | Ownership holds *until unbound*, which is an event, not a date. An expiry would mean an agent silently loses the party that answers for it on a day nobody chose |
+
+The issuer's signing key is required at startup and is never generated at boot. A key generated
+at boot issues credentials that stop verifying at the next restart, and the operator would find
+out from verification failures rather than from a startup error. Development uses
+`tools/uai-keygen`; production uses an HSM or KMS ([§23.5](16-deployment.md)).
+
+UAI never generates an *agent's* key — a registry that can generate your key can impersonate
+you — but the issuer's own key belongs to whoever operates the service and has to come from
+somewhere. The two cases are not the same and the distinction is worth keeping explicit.
+
 ### 8.4 Status after registration
 
 Registration yields `REGISTERED`, not `VERIFIED`. Promotion to `VERIFIED` requires the full

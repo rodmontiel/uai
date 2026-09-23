@@ -137,6 +137,13 @@ paths:
       operationId: getAgentCredentials
       summary: Credential set held by an agent
       parameters: [{ $ref: '#/components/parameters/AgentId' }]
+      description: |
+        Credentials are returned exactly as issued, byte for byte. Re-serializing them would
+        produce different bytes than the issuer signed and every proof would fail, for reasons
+        that look like a key problem.
+
+        An AgentOwnershipCredential embeds the two-sided registration proof, so a relying party
+        validates ownership from the document and the owner's public key alone (§6.4.1).
       responses:
         '200':
           description: Credentials
@@ -144,10 +151,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [credentials]
                 properties:
                   credentials:
                     type: array
+                    description: |
+                      W3C Verifiable Credentials 2.0 with Data Integrity proofs. See
+                      spec/schemas/agent-identity-credential.schema.json and
+                      agent-ownership-credential.schema.json.
                     items: { type: object }
+        '404': { $ref: '#/components/responses/Problem' }
 
   /agents/{id}/bind:
     post:
@@ -712,6 +725,10 @@ components:
           enum: [UNREGISTERED, REGISTERED, VERIFIED, ACTIVE, UNBOUND, QUARANTINED, REVOCATION_AUTHORIZED, REVOKED]
         assurance_level: { enum: [UAI-AL0, UAI-AL1, UAI-AL2, UAI-AL3] }
         identity_commitment: { type: string }
+        credentials:
+          type: array
+          items: { type: string }
+          description: Types of the credentials issued with the identity (§8.2).
         genesis_event_hash:
           type: string
           pattern: '^sha256:[0-9a-f]{64}$'

@@ -6,6 +6,11 @@
 SHELL := /bin/bash
 GO ?= $(shell command -v go 2>/dev/null || echo $(HOME)/.local/go/bin/go)
 PG_DSN ?= postgres://uai:uai@localhost:5432/uai?sslmode=disable
+# The credential issuer key. It is never generated at boot: a key that changes on
+# restart issues credentials that stop verifying, and the operator would find out
+# from verification failures rather than from a startup error.
+ISSUER_KEY ?= .keys/issuer.jwk
+ISSUER_DID ?= did:web:credentials.uai.world
 
 ## ---------- container runtime ----------
 # Rootless Podman is the reference runtime: docs/adr/0001-podman-rootless-runtime.md.
@@ -86,9 +91,19 @@ migrate-down: ## Roll back the most recent migration
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations -steps 1 down
 
 ## ---------- quality ----------
+.PHONY: issuer-key
+issuer-key: ## Create the credential issuer signing key (once per deployment)
+	@test ! -f $(ISSUER_KEY) || { echo "$(ISSUER_KEY) already exists; replacing it would"; \
+		echo "invalidate every credential issued under it. Delete it deliberately first."; exit 1; }
+	$(GO) run ./tools/uai-keygen -out $(ISSUER_KEY) -did "$(ISSUER_DID)"
+
 .PHONY: run-gateway
-run-gateway: ## Run the API gateway against the local stack
-	$(GO) run ./services/gateway -dsn "$(PG_DSN)" -addr :8080 -scheme http
+run-gateway: $(ISSUER_KEY) ## Run the API gateway against the local stack
+	$(GO) run ./services/gateway -dsn "$(PG_DSN)" -addr :8080 -scheme http \
+		-issuer-key $(ISSUER_KEY) -issuer-did "$(ISSUER_DID)"
+
+$(ISSUER_KEY):
+	@$(MAKE) --no-print-directory issuer-key
 
 .PHONY: build
 build: ## Build everything
