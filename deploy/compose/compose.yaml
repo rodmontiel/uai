@@ -1,0 +1,45 @@
+# Universal Agent Identity — local development stack.
+#
+# Reference runtime: rootless Podman (docs/adr/0001-podman-rootless-runtime.md).
+# Docker Compose reads this file unchanged; the Makefile uses whichever is
+# installed. `compose.yaml` is the vendor-neutral Compose Specification name,
+# so neither runtime is privileged by the filename either.
+#
+# RULE — this file contains only services the code actually uses today.
+# A stack that starts daemons nothing talks to misrepresents the system, and
+# costs every new contributor idle containers on their first `up`. Services
+# arrive in the phase that wires them (docs/protocol/19-roadmap.md):
+#
+#   Phase 6    opa                     policy decision point
+#   Phase 7    besu-1..4, witness-1..2 consortium ledger + transparency log
+#   Phase 8    uai-web                 frontend
+#   Phase 10   uai-gateway             the demo runs the API in-stack
+#   Phase 12   spire-server/-agent     workload identity, observability profile
+#
+# Images are pinned by multi-arch manifest digest. A floating tag is an
+# unreviewed dependency update executed on every `up` (threat T-07), and it
+# makes "works on my machine" unfalsifiable.
+
+name: uai
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uai}
+      POSTGRES_DB: ${POSTGRES_DB:-uai}
+    # Loopback only: a dev database bound to 0.0.0.0 is a dev database every
+    # other machine on the café wifi can reach.
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uai} -d ${POSTGRES_DB:-uai}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:

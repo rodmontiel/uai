@@ -93,60 +93,92 @@ flowchart TB
 No component trusts another because of network position. A compromised service reaches exactly
 the data its own grants allow, and its actions are attributable to its own SVID.
 
-## 23.4 Local development — Docker Compose first
+## 23.4 Local development — rootless Podman first
 
-The compose file grows phase by phase, and it only ever contains services that exist. A stack
-declaring containers for unbuilt services would fail on the first `up` and would misrepresent
-what the project actually runs.
+**Reference runtime: rootless Podman.** Docker is supported on every target and must keep
+working; the reasoning, the measured security comparison and — most of it — *why this was
+decided in Phase 4 rather than after Phase 12* are in
+[ADR-0001](../adr/0001-podman-rootless-runtime.md).
 
-**Shipping today** (`deploy/compose/docker-compose.yml`) — the infrastructure the implemented
-phases need:
+The short version: in this system the container runtime is not packaging. SPIRE derives a
+workload's identity from what the runtime can attest about the process, and attestor selectors
+are runtime-specific, so deferring the runtime choice means deferring the root of the workload
+trust chain until after the code that depends on it exists.
+
+The stack file grows phase by phase and only ever contains services that exist. A stack that
+starts daemons nothing talks to misrepresents the system, and it is the first command a new
+contributor runs.
+
+**Shipping today** (`deploy/compose/compose.yaml`):
 
 ```text
-postgres   PostgreSQL 16        schema + invariant guards (Phase 3)
-redis      nonce replay cache, rate limits
-nats       JetStream, durable inter-service events
-minio      S3-compatible object store for the Evidence Vault
-opa        policy decision engine, mounted against policy/
+postgres   PostgreSQL 16, pinned by manifest digest   schema + invariant guards (Phase 3)
 ```
+
+That is the whole list. The nonce replay cache, the idempotency ledger and the event chain are
+all PostgreSQL (`internal/store`); there is no message bus and no object store in the
+implemented phases.
 
 **Added as the phases land**, in this order:
 
-| Added in | Services |
-|---|---|
-| Phase 4 | `uai-gateway`, `uai-identity`, `uai-registry`, `uai-credential`, `uai-action` |
-| Phase 6 | `uai-policy` (OPA embedded rather than sidecar) |
-| Phase 7 | `besu-1..4` (QBFT validators), `uai-ledger-writer`, `uai-transparency`, `witness-1`, `witness-2` |
-| Phase 8 | `uai-web` |
-| Phase 12 | `spire-server`, `spire-agent`, full observability profile |
+| Added in | Services | Why not earlier |
+|---|---|---|
+| Phase 6 | `opa` | no policy bundle exists to serve yet |
+| Phase 7 | `besu-1..4` (QBFT validators), `witness-1`, `witness-2` | nothing writes to a ledger or co-signs a checkpoint yet |
+| Phase 8 | `uai-web` | — |
+| Phase 10 | `uai-gateway` in-stack, for the ACME demo | the image exists now (`make image`); the demo wires it |
+| Phase 12 | `spire-server`, `spire-agent`, observability profile | — |
 
-Profiles keep the default path light: `docker compose up` brings what exists; `--profile full`
-will add Vault, SPIRE and the observability stack once Phase 12 introduces them.
+Images are pinned by multi-arch manifest digest rather than by tag. A floating tag is an
+unreviewed dependency update executed on every `up` (threat **T-07**), and it makes "works on
+my machine" unfalsifiable.
 
 ### 23.4.1 Make targets
 
 The Makefile follows the same rule — a target exists only when it works:
 
 ```bash
+make runtime     # show the detected runtime, compose provider and image tags
 make up          # start the infrastructure containers
 make migrate     # apply the schema
-make dev         # up + migrate
+make dev         # up + migrate + seed
+make image       # build the gateway image (rootless, scratch-based, reproducible)
 make test        # Go unit tests
+make integration # throwaway PostgreSQL + store/API tests with -race + the invariants
 make invariants  # assert that the forbidden operations fail
 ```
 
-`make demo` (the ACME end-to-end scenario) and `make verify` (conformance vectors against a
-running stack) arrive with Phases 10 and 2 respectively. **The "one command from clone to a
-working demo" goal is a Phase 10 acceptance criterion, not a present-tense claim** — a protocol
-nobody can run locally is a protocol nobody implements, which is why it is an explicit gate
-rather than an aspiration.
+Every container target honours `CONTAINER=docker`. The throwaway integration database is not
+pinned separately: `PG_IMAGE` is parsed out of `compose.yaml`, because asserting the invariants
+against a different PostgreSQL than developers run is how a version-specific trigger behaviour
+ships green and breaks on a laptop.
+
+`make demo` (the ACME end-to-end scenario) arrives with Phase 10. **The "one command from clone
+to a working demo" goal is a Phase 10 acceptance criterion, not a present-tense claim** — a
+protocol nobody can run locally is a protocol nobody implements, which is why it is an explicit
+gate rather than an aspiration.
+
+### 23.4.2 Image construction
+
+`deploy/containers/Containerfile.gateway` is the pattern every later service image follows:
+
+| Property | How | Why |
+|---|---|---|
+| `FROM scratch` | static `CGO_ENABLED=0` binary, CA bundle and a passwd entry copied in | no shell and no package manager means command execution has nothing to execute; there is also no CVE feed for an empty filesystem |
+| Reproducible | `-trimpath`, `-buildid=`, `-mod=readonly`, `podman build --timestamp=0` | a verifier that cannot rebuild the artifact it is asked to trust is taking our word for it |
+| Non-root | `USER 65532:65532` with a real `/etc/passwd` entry | correct even on a runtime that does not map users itself |
+| No secrets in context | `.containerignore` (`.dockerignore` is a symlink to it, so they cannot drift) excludes `.env`, `.keys/`, `*.pem` | anything copied into a layer is recoverable from the image even if a later stage deletes it |
+
+The trade-off is accepted deliberately: you cannot `exec` a shell into this image to debug it.
+That is the property, not a defect — it is why the gateway emits structured logs.
 
 ## 23.5 Production — Kubernetes + SPIRE
 
 | Concern | Approach |
 |---|---|
 | Orchestration | Kubernetes, one namespace per plane (identity / governance / proof / data) |
-| Workload identity | SPIRE server (HA) + agent DaemonSet; registration entries by SA + image digest |
+| Container runtime | CRI-O or containerd; images are OCI and built rootless ([ADR-0001](../adr/0001-podman-rootless-runtime.md)) — no image in this system requires a Docker-specific build feature |
+| Workload identity | SPIRE server (HA) + agent DaemonSet; registration entries by SA + image digest. Selectors are runtime-specific, which is why the runtime was fixed before the SPIFFE integration rather than after |
 | Ingress | Envoy at the edge with mTLS passthrough for agent traffic |
 | Secrets | Vault with KMS auto-unseal; issuer keys in HSM/CloudHSM, never in cluster |
 | Database | PostgreSQL HA with PITR; separate instance for the evidence vault metadata |
@@ -186,6 +218,12 @@ flowchart LR
 
 Additional gates specific to this system:
 
+- **Both runtimes are exercised.** The integration job runs once under rootless Podman and once
+  under Docker. A reference implementation that only runs on the runtime its authors happen to
+  prefer has quietly narrowed the protocol, and we are asking other implementers not to do that.
+- **Images are built rootless** (Podman/Buildah — no daemon in CI) and the build is repeated to
+  confirm the image id is identical. A non-reproducible build makes the signature and the SBOM
+  attest to something nobody else can reconstruct.
 - **Invariant tests are blocking.** The INV-001…010 negative tests are not allowed to be skipped.
 - **On-chain data check.** Any contract call argument that is not `bytes32`/enum/uint fails the
   build (INV-007/008).

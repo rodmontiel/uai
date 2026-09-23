@@ -1,0 +1,69 @@
+# uai-gateway — the Policy Enforcement Point (Phase 4).
+#
+# Build:  make image          (rootless Podman; Docker builds this unchanged)
+#
+# This file exists to guarantee two properties the runtime cannot add later:
+#
+#   1. The final image is FROM scratch — no shell, no package manager, no libc,
+#      no base image at all. There is no CVE feed for an empty filesystem, and
+#      a command-injection bug in the gateway lands somewhere with nothing to
+#      execute. The cost is that you cannot `exec` into it to debug; that is
+#      the point, and it is why the gateway logs rather than offering a shell.
+#
+#   2. The binary is reproducible: CGO off, -trimpath, and a stripped build id,
+#      so the same commit yields the same bytes on any machine. A verifier that
+#      cannot rebuild the artifact it is asked to trust is taking our word for
+#      it — which is the thing this whole protocol refuses to do.
+#
+# Base images are pinned by multi-arch manifest digest (threat T-07).
+
+FROM docker.io/library/golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
+
+WORKDIR /src
+
+# Dependencies first: this layer is invalidated only by go.mod/go.sum, so an
+# ordinary source edit does not re-download the module graph.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# -mod=readonly: the build fails rather than silently amending go.mod, so the
+# image can never contain a dependency that is not in the committed go.sum.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -mod=readonly \
+      -trimpath \
+      -ldflags="-s -w -buildid= -X main.version=${VERSION}" \
+      -o /out/uai-gateway ./services/gateway
+
+# The scratch image has no /etc/passwd, so a numeric USER would resolve to a
+# nameless uid. Build the two files the binary actually needs.
+RUN printf 'uai:x:65532:65532:uai-gateway:/nonexistent:/sbin/nologin\n' > /out/passwd \
+ && printf 'uai:x:65532:\n' > /out/group
+
+FROM scratch
+
+# Outbound TLS (PostgreSQL with sslmode=verify-full, webhooks, witness calls)
+# needs a trust store. Without this the gateway fails closed on every TLS dial,
+# which is correct but unhelpful.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/passwd /etc/passwd
+COPY --from=build /out/group  /etc/group
+COPY --from=build /out/uai-gateway /usr/local/bin/uai-gateway
+
+# Never root, not even inside a user namespace. Rootless Podman already maps
+# this to an unprivileged subuid on the host; this makes the image correct on
+# a runtime that does not.
+USER 65532:65532
+
+EXPOSE 8080
+
+# Configured by environment, not by CMD: the binary already reads PG_DSN,
+# UAI_ADDR and UAI_SCHEME, and a CMD here would only be a second, divergent
+# place to set the same three values.
+#
+# Exec form is mandatory anyway with no shell in the image — which is also
+# what delivers SIGTERM to PID 1 directly, so the gateway's graceful shutdown
+# runs instead of being killed mid-request.
+ENTRYPOINT ["/usr/local/bin/uai-gateway"]

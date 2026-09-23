@@ -81,6 +81,23 @@ make up          # infrastructure containers
 make migrate     # apply the schema
 ```
 
+### Containers
+
+The reference runtime is **rootless Podman**; Docker works on every target via
+`make CONTAINER=docker <target>`. The runtime was fixed now, in Phase 4, rather than after the
+last phase, because SPIRE derives workload identity from what the runtime can attest and its
+selectors are runtime-specific — so in this system the runtime is the base of the workload trust
+chain, not packaging. The reasoning and the measured comparison are in
+[ADR-0001](docs/adr/0001-podman-rootless-runtime.md).
+
+```bash
+make runtime     # what was detected: runtime, compose provider, image tags
+make image       # gateway image: FROM scratch, non-root, reproducible
+```
+
+The compose stack contains only services the code actually uses — today that is PostgreSQL
+alone, pinned by manifest digest. Services join it in the phase that wires them.
+
 ### The invariant tests
 
 The security model is executable, not aspirational. `test/invariants/invariants.sql` asserts

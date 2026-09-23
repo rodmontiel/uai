@@ -1,0 +1,34 @@
+# Build context exclusions. Podman reads .containerignore, Docker reads
+# .dockerignore — the latter is a symlink to this file so the two can never
+# drift apart and produce different images from the same commit.
+
+.git
+.gitignore
+.graphifyignore
+graphify-out/
+raw/
+
+# Not needed to compile a server binary, and every megabyte here is a megabyte
+# the daemonless build has to hash on every invocation.
+docs/
+demo/
+web/
+sdk/
+mcp/
+contracts/
+deploy/
+.github/
+
+# Secrets must never enter a build context: anything copied in is recoverable
+# from the image layers even if a later stage deletes it.
+.env
+.env.*
+!.env.example
+.keys/
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp

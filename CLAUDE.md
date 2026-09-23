@@ -47,6 +47,11 @@ declarado existe en el repo.
 
 `make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 
+**Runtime de contenedores: Podman rootless** (ADR-0001). `make runtime` dice qué detectó.
+Docker sigue soportado en todos los targets con `make CONTAINER=docker ...`, y tiene que seguir
+funcionando: una implementación de referencia que solo corre en el runtime que prefieren sus
+autores angostó el protocolo sin decirlo.
+
 ## Reglas del proyecto
 
 1. **Prioridad en cada trade-off:** security > auditability > interoperability > simplicity >
@@ -62,5 +67,12 @@ declarado existe en el repo.
    escribe sus propias expectativas solo prueba que el código se cree a sí mismo. Regenerarlos
    (`make vectors`) debe ser un no-op: un diff significa que cambió el protocolo.
 7. **Todo schema necesita ejemplos inválidos.** Un schema que nunca rechaza nada no valida nada.
-8. **No afirmar en presente lo que todavía no existe.** Ya pasó dos veces (el compose de §23.4 y
-   los test vectors de §7.9). Si un doc describe algo no implementado, decir en qué fase entra.
+8. **No afirmar en presente lo que todavía no existe.** Ya pasó tres veces: el texto del compose
+   (§23.4), los test vectors (§7.9) y el compose real, que declaraba `redis`, `nats`, `minio` y
+   `opa` sin que ninguna línea de Go los mencionara. Si un doc o un archivo ejecutable describe
+   algo no implementado, decir en qué fase entra.
+9. **El compose y el `.env.example` solo listan lo que el código usa hoy.** Son el primer
+   comando que corre alguien nuevo; ahí la regla 8 es más cara que en prosa.
+10. **Ninguna imagen puede depender de una feature de build específica de un vendor.** Las
+    imágenes son OCI, se construyen rootless y el build tiene que ser reproducible: dos `make
+    image` seguidos dan el mismo image id.

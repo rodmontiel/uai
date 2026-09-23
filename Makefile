@@ -5,8 +5,33 @@
 # see docs/protocol/19-roadmap.md for what is coming.
 SHELL := /bin/bash
 GO ?= $(shell command -v go 2>/dev/null || echo $(HOME)/.local/go/bin/go)
-COMPOSE ?= docker compose -f deploy/compose/docker-compose.yml
 PG_DSN ?= postgres://uai:uai@localhost:5432/uai?sslmode=disable
+
+## ---------- container runtime ----------
+# Rootless Podman is the reference runtime: docs/adr/0001-podman-rootless-runtime.md.
+# Docker remains supported on every target — `make CONTAINER=docker <target>` —
+# because a protocol that only runs on one vendor's runtime is not portable, and
+# portability is exactly what we are asking other implementers to give us.
+CONTAINER    ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
+COMPOSE_FILE := deploy/compose/compose.yaml
+# Provider preference:
+#   podman-compose  drives podman directly — no socket, no daemon, nothing to enable
+#   podman compose  delegates to the Compose binary over the rootless podman socket
+#   docker compose  the Docker path
+COMPOSE ?= $(shell \
+	if [ "$(CONTAINER)" != podman ]; then echo "docker compose"; \
+	elif command -v podman-compose >/dev/null 2>&1; then echo podman-compose; \
+	else echo "podman compose"; fi) -f $(COMPOSE_FILE)
+# The throwaway integration database must be the same build as the dev stack:
+# asserting the invariants against a different PostgreSQL than developers run is
+# how a version-specific trigger behaviour ships green and breaks on a laptop.
+PG_IMAGE := $(shell sed -n 's/.*image: \(docker.io\/library\/postgres.*\)/\1/p' $(COMPOSE_FILE))
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+IMAGE    ?= localhost/uai-gateway:$(VERSION)
+# podman can build byte-reproducible images by fixing every timestamp; docker
+# has no equivalent flag, so it is added only where it exists rather than
+# breaking the other path.
+REPRO    := $(shell [ "$(CONTAINER)" = podman ] && echo --timestamp=0)
 
 .DEFAULT_GOAL := help
 
@@ -18,8 +43,22 @@ help: ## Show this help
 .PHONY: dev
 dev: up migrate seed ## Bring up the local stack, apply the schema and seed it
 
+.PHONY: runtime
+runtime: ## Show the detected container runtime and compose provider
+	@echo "runtime : $(CONTAINER)  ($$($(CONTAINER) --version 2>/dev/null))"
+	@echo "compose : $(COMPOSE)"
+	@echo "image   : $(IMAGE)"
+	@echo "postgres: $(PG_IMAGE)"
+	@if [ "$(CONTAINER)" = podman ]; then \
+		echo "rootless: $$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null)"; fi
+
 .PHONY: up
 up: ## Start infrastructure containers
+	@# Only the delegating provider needs the socket; podman-compose does not.
+	@case "$(COMPOSE)" in "podman compose"*) \
+		systemctl --user start podman.socket 2>/dev/null \
+		|| echo "warn: podman.socket unavailable — install podman-compose for a socket-free path";; \
+	esac
 	$(COMPOSE) up -d
 	@echo "waiting for postgres..."
 	@until $(COMPOSE) exec -T postgres pg_isready -U uai >/dev/null 2>&1; do sleep 1; done
@@ -80,19 +119,19 @@ vectors-check: ## Fail if regenerating the vectors would change them
 
 .PHONY: integration
 integration: ## Run store integration tests against a throwaway PostgreSQL
-	@docker rm -f uai-pg-test >/dev/null 2>&1 || true
-	@docker run -d --name uai-pg-test -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
-		-e POSTGRES_DB=uai -p 55433:5432 postgres:16-alpine >/dev/null
+	@$(CONTAINER) rm -f uai-pg-test >/dev/null 2>&1 || true
+	@$(CONTAINER) run -d --name uai-pg-test -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
+		-e POSTGRES_DB=uai -p 127.0.0.1:55433:5432 $(PG_IMAGE) >/dev/null
 	@for i in $$(seq 1 40); do \
-		docker exec uai-pg-test pg_isready -U uai >/dev/null 2>&1 && break; sleep 1; done
-	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0001_init.up.sql
-	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0002_governance.up.sql
-	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/seed/0001_jurisdictions.up.sql
+		$(CONTAINER) exec uai-pg-test pg_isready -U uai >/dev/null 2>&1 && break; sleep 1; done
+	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0001_init.up.sql
+	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0002_governance.up.sql
+	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/seed/0001_jurisdictions.up.sql
 	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
 		$(GO) test ./internal/store/... ./internal/api/... -count=1 -race
-	@docker exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
+	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
 		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
-	@docker rm -f uai-pg-test >/dev/null
+	@$(CONTAINER) rm -f uai-pg-test >/dev/null
 
 .PHONY: invariants
 invariants: ## Assert that the forbidden operations fail (INV-001..010)
@@ -111,6 +150,16 @@ fmt: ## Format Go sources
 
 .PHONY: check
 check: build lint test conformance vectors-check ## Everything that must pass before a commit
+
+## ---------- container images ----------
+.PHONY: image
+image: ## Build the gateway image (rootless, scratch-based, reproducible)
+	$(CONTAINER) build $(REPRO) \
+		--file deploy/containers/Containerfile.gateway \
+		--build-arg VERSION=$(VERSION) \
+		--tag $(IMAGE) .
+	@$(CONTAINER) image inspect $(IMAGE) --format \
+		'built $(IMAGE){{"\n"}}  size {{.Size}} bytes{{"\n"}}  user {{.Config.User}}'
 
 ## ---------- knowledge graph ----------
 .PHONY: graph
