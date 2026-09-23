@@ -12,12 +12,20 @@ import (
 	"github.com/rodmontiel/uai/pkg/uaiid"
 )
 
+// DefaultPolicyVersion is the GASC bundle this build stamps on new identities
+// until the policy service ships (Phase 6).
+const DefaultPolicyVersion = "GASC-2027.4"
+
 // Server is the UAI HTTP surface.
 type Server struct {
 	db       *store.DB
 	resolver *StoreResolver
 	scheme   string
-	now      func() time.Time
+	// policyVersion is stamped on every identity minted under it. INV-009 is
+	// the same idea one layer down: a record that cannot say which rules
+	// produced it cannot be audited later.
+	policyVersion string
+	now           func() time.Time
 }
 
 // Option configures a Server.
@@ -28,12 +36,16 @@ type Option func(*Server)
 // wrong makes every signature verify against the wrong resource.
 func WithScheme(s string) Option { return func(srv *Server) { srv.scheme = s } }
 
+// WithPolicyVersion sets the GASC bundle version recorded on new identities.
+func WithPolicyVersion(v string) Option { return func(srv *Server) { srv.policyVersion = v } }
+
 // WithClock overrides the clock, for tests.
 func WithClock(f func() time.Time) Option { return func(srv *Server) { srv.now = f } }
 
 // NewServer builds the HTTP surface.
 func NewServer(db *store.DB, opts ...Option) *Server {
-	s := &Server{db: db, resolver: NewStoreResolver(db), scheme: "https", now: time.Now}
+	s := &Server{db: db, resolver: NewStoreResolver(db), scheme: "https",
+		policyVersion: DefaultPolicyVersion, now: time.Now}
 	for _, o := range opts {
 		o(s)
 	}
@@ -54,6 +66,22 @@ func (s *Server) Routes() http.Handler {
 		CaptureBody,
 		RequirePoP(s.db, uaicrypto.DomainAttestation, s.scheme),
 		RequireIdempotency(s.db, "POST /v1/actions/attest"),
+	))
+
+	// Registration is the one write path without proof of possession, because
+	// establishing the agent's key is what it does. It is still behind an
+	// idempotency key: §8.1 requires registration to be safely retryable, and a
+	// retry that opened a second registration would issue a second pair of
+	// challenges for one logical request.
+	mux.Handle("POST /v1/agents", Chain(
+		http.HandlerFunc(s.registerAgent),
+		CaptureBody,
+		RequireIdempotency(s.db, "POST /v1/agents"),
+	))
+	mux.Handle("POST /v1/agents/{id}/prove", Chain(
+		http.HandlerFunc(s.prove),
+		CaptureBody,
+		RequireIdempotency(s.db, "POST /v1/agents/{id}/prove"),
 	))
 
 	mux.Handle("GET /v1/agents/{id}", Chain(http.HandlerFunc(s.getAgent), CaptureBody))

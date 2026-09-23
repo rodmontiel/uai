@@ -159,7 +159,7 @@ func digestVectors() (any, error) {
 		uaicrypto.DomainAttestation, uaicrypto.DomainCredential, uaicrypto.DomainDIDDocument,
 		uaicrypto.DomainChallenge, uaicrypto.DomainVote, uaicrypto.DomainDecision,
 		uaicrypto.DomainQuarantine, uaicrypto.DomainRevocation, uaicrypto.DomainCheckpoint,
-		uaicrypto.DomainCommitment, uaicrypto.DomainAudit,
+		uaicrypto.DomainCommitment, uaicrypto.DomainAudit, uaicrypto.DomainRegistration,
 	}
 	set := testvectors.Set[testvectors.DigestCase]{
 		VectorSet:   "uai-cs-1/digest",
@@ -556,7 +556,7 @@ func chainVectors() (any, error) {
 		Reference:   "docs/protocol/06-action-attestation.md#104-the-event-chain",
 	}
 	agent := "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM"
-	genesisHash, err := uaicrypto.Digest(uaicrypto.DomainAttestation, []byte(`{"registration":"`+agent+`"}`))
+	genesisHash, err := uaicrypto.Digest(uaicrypto.DomainRegistration, []byte(`{"registration":"`+agent+`"}`))
 	if err != nil {
 		return nil, err
 	}

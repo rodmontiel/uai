@@ -21,20 +21,27 @@ const (
 	DomainAttestation Domain = "UAI-v1:attestation"
 	DomainCredential  Domain = "UAI-v1:credential"
 	DomainDIDDocument Domain = "UAI-v1:did-document"
-	DomainChallenge   Domain = "UAI-v1:challenge"
-	DomainVote        Domain = "UAI-v1:vote"
-	DomainDecision    Domain = "UAI-v1:decision"
-	DomainQuarantine  Domain = "UAI-v1:quarantine"
-	DomainRevocation  Domain = "UAI-v1:revocation"
-	DomainCheckpoint  Domain = "UAI-v1:checkpoint"
-	DomainCommitment  Domain = "UAI-v1:commitment"
-	DomainAudit       Domain = "UAI-v1:audit"
+	// DomainRegistration covers the registration record that anchors an
+	// identity's event chain (§8.3). It is distinct from DomainAttestation
+	// because a genesis record is not a claim about an action: giving them one
+	// domain would let a crafted attestation hash be presented as an identity's
+	// origin, which is the exact substitution domain separation exists to stop.
+	DomainRegistration Domain = "UAI-v1:registration"
+	DomainChallenge    Domain = "UAI-v1:challenge"
+	DomainVote         Domain = "UAI-v1:vote"
+	DomainDecision     Domain = "UAI-v1:decision"
+	DomainQuarantine   Domain = "UAI-v1:quarantine"
+	DomainRevocation   Domain = "UAI-v1:revocation"
+	DomainCheckpoint   Domain = "UAI-v1:checkpoint"
+	DomainCommitment   Domain = "UAI-v1:commitment"
+	DomainAudit        Domain = "UAI-v1:audit"
 )
 
 var knownDomains = map[Domain]bool{
 	DomainAttestation: true, DomainCredential: true, DomainDIDDocument: true,
 	DomainChallenge: true, DomainVote: true, DomainDecision: true,
-	DomainQuarantine: true, DomainRevocation: true, DomainCheckpoint: true,
+	DomainRegistration: true,
+	DomainQuarantine:   true, DomainRevocation: true, DomainCheckpoint: true,
 	DomainCommitment: true, DomainAudit: true,
 }
 

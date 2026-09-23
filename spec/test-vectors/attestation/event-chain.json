@@ -15,14 +15,14 @@
         "event_id": "01JY8RA3C7K2V9M0QW4T6Z8XPD",
         "outcome": "SUCCESS",
         "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
-        "previous_event_hash": "sha256:049ee108fca9741c9ceb38ada6f9d4a076cacc2e86e19d35b9b262970a916b0a",
+        "previous_event_hash": "sha256:6fc852271c45e79b03d69535f7f9dd07af325cdafcdbb0bf28d40d10c742f1de",
         "purpose": "delivery_optimization",
         "sequence": 1,
         "uai_version": "0.1"
       },
-      "canonical": "{\"action\":{\"capability\":\"route.optimize\",\"type\":\"route.optimize\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA3C7K2V9M0QW4T6Z8XPD\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:049ee108fca9741c9ceb38ada6f9d4a076cacc2e86e19d35b9b262970a916b0a\",\"purpose\":\"delivery_optimization\",\"sequence\":1,\"uai_version\":\"0.1\"}",
-      "event_hash": "sha256:c9fd8fd2a9a124b6b3f2f17ebf0478405fdc288873e212cdc1b163bfb102b89f",
-      "previous_event_hash": "sha256:049ee108fca9741c9ceb38ada6f9d4a076cacc2e86e19d35b9b262970a916b0a"
+      "canonical": "{\"action\":{\"capability\":\"route.optimize\",\"type\":\"route.optimize\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA3C7K2V9M0QW4T6Z8XPD\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:6fc852271c45e79b03d69535f7f9dd07af325cdafcdbb0bf28d40d10c742f1de\",\"purpose\":\"delivery_optimization\",\"sequence\":1,\"uai_version\":\"0.1\"}",
+      "event_hash": "sha256:3cec56ccdb51a27bbee0a985d89da62d61252cf24985fd99416172b5cc1fa80c",
+      "previous_event_hash": "sha256:6fc852271c45e79b03d69535f7f9dd07af325cdafcdbb0bf28d40d10c742f1de"
     },
     {
       "name": "second attested action",
@@ -35,14 +35,14 @@
         "event_id": "01JY8RA4D8L3W0N1RX5U7A9YQE",
         "outcome": "SUCCESS",
         "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
-        "previous_event_hash": "sha256:c9fd8fd2a9a124b6b3f2f17ebf0478405fdc288873e212cdc1b163bfb102b89f",
+        "previous_event_hash": "sha256:3cec56ccdb51a27bbee0a985d89da62d61252cf24985fd99416172b5cc1fa80c",
         "purpose": "delivery_optimization",
         "sequence": 2,
         "uai_version": "0.1"
       },
-      "canonical": "{\"action\":{\"capability\":\"crm.customer.read\",\"type\":\"crm.customer.read\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA4D8L3W0N1RX5U7A9YQE\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:c9fd8fd2a9a124b6b3f2f17ebf0478405fdc288873e212cdc1b163bfb102b89f\",\"purpose\":\"delivery_optimization\",\"sequence\":2,\"uai_version\":\"0.1\"}",
-      "event_hash": "sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011",
-      "previous_event_hash": "sha256:c9fd8fd2a9a124b6b3f2f17ebf0478405fdc288873e212cdc1b163bfb102b89f"
+      "canonical": "{\"action\":{\"capability\":\"crm.customer.read\",\"type\":\"crm.customer.read\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA4D8L3W0N1RX5U7A9YQE\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:3cec56ccdb51a27bbee0a985d89da62d61252cf24985fd99416172b5cc1fa80c\",\"purpose\":\"delivery_optimization\",\"sequence\":2,\"uai_version\":\"0.1\"}",
+      "event_hash": "sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4",
+      "previous_event_hash": "sha256:3cec56ccdb51a27bbee0a985d89da62d61252cf24985fd99416172b5cc1fa80c"
     },
     {
       "name": "third attested action",
@@ -55,14 +55,14 @@
         "event_id": "01JY8RA5E9M4X1P2SY6V8B0ZRF",
         "outcome": "SUCCESS",
         "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
-        "previous_event_hash": "sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011",
+        "previous_event_hash": "sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4",
         "purpose": "delivery_optimization",
         "sequence": 3,
         "uai_version": "0.1"
       },
-      "canonical": "{\"action\":{\"capability\":\"cloud.securitygroup.update\",\"type\":\"infrastructure.modify\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA5E9M4X1P2SY6V8B0ZRF\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011\",\"purpose\":\"delivery_optimization\",\"sequence\":3,\"uai_version\":\"0.1\"}",
-      "event_hash": "sha256:422d2fa07420664d693b85375fd76f3d20c39e193c7d04a25787a6c09ee62376",
-      "previous_event_hash": "sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011"
+      "canonical": "{\"action\":{\"capability\":\"cloud.securitygroup.update\",\"type\":\"infrastructure.modify\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA5E9M4X1P2SY6V8B0ZRF\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4\",\"purpose\":\"delivery_optimization\",\"sequence\":3,\"uai_version\":\"0.1\"}",
+      "event_hash": "sha256:01d597e363575b8c369a8075c914de7ff09bceccd38337cc5c15267347f68316",
+      "previous_event_hash": "sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4"
     },
     {
       "name": "fork: a second event claiming the same predecessor",
@@ -75,14 +75,14 @@
         "event_id": "01JY8RA6F0N5Y2Q3TZ7W9C1ASG",
         "outcome": "SUCCESS",
         "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000",
-        "previous_event_hash": "sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011",
+        "previous_event_hash": "sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4",
         "purpose": "delivery_optimization",
         "sequence": 3,
         "uai_version": "0.1"
       },
-      "canonical": "{\"action\":{\"capability\":\"cloud.securitygroup.update\",\"type\":\"infrastructure.modify\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA6F0N5Y2Q3TZ7W9C1ASG\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011\",\"purpose\":\"delivery_optimization\",\"sequence\":3,\"uai_version\":\"0.1\"}",
-      "event_hash": "sha256:16d2fb604d9124046a01b96a6e0110050f175413bdf53c968ae3fbbd818f17f6",
-      "previous_event_hash": "sha256:b127fa2adaf7b9352423964f8f56f491e9464f963a2e861d35b13961b7877011",
+      "canonical": "{\"action\":{\"capability\":\"cloud.securitygroup.update\",\"type\":\"infrastructure.modify\"},\"agent_did\":\"did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM\",\"event_id\":\"01JY8RA6F0N5Y2Q3TZ7W9C1ASG\",\"outcome\":\"SUCCESS\",\"owner_did\":\"did:uai:owner:01JY8R9ZB00000000000000000\",\"previous_event_hash\":\"sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4\",\"purpose\":\"delivery_optimization\",\"sequence\":3,\"uai_version\":\"0.1\"}",
+      "event_hash": "sha256:693241e8e14f8593ad866ebb7f4353ee8e21b13d417f4199917b5c46299baebe",
+      "previous_event_hash": "sha256:f67b1e348baa1b17bd64a59d6aa2eae26f1657bad05128c268f5b1fc3695bec4",
       "is_fork": true,
       "fork_note": "A conformant implementation MUST detect that two distinct events reference the same previous_event_hash and MUST NOT silently accept the second. A fork has no benign cause."
     }

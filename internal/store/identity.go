@@ -51,14 +51,21 @@ type Agent struct {
 	IdentityCommitment  string
 	PolicyVersion       string
 	GenesisEventHash    string
-	RegisteredAt        time.Time
-	RevokedAt           *time.Time
+	// IdentityCommitmentSalt opens IdentityCommitment. Without it the on-chain
+	// commitment is a hash nobody can ever tie back to this identity.
+	IdentityCommitmentSalt []byte
+	RegisteredAt           time.Time
+	RevokedAt              *time.Time
 }
 
-// AgentKey is one entry of an agent's key history.
-type AgentKey struct {
-	ID          string
-	AgentID     string
+// KeyRecord is one entry of a key history. Agents and owners both have one:
+// an owner signs the ownership half of a registration proof and, for a lost
+// agent, the unbind request, so its keys need exactly the same lifecycle —
+// rotation, revocation, compromise, and resolution as of a past moment.
+type KeyRecord struct {
+	ID string
+	// SubjectID is the agent or owner the key belongs to.
+	SubjectID   string
 	KeyID       string
 	Alg         string
 	PublicJWK   json.RawMessage
@@ -69,6 +76,9 @@ type AgentKey struct {
 	Compromised *time.Time
 	LogIndex    *int64
 }
+
+// AgentKey is retained as the name used at agent call sites.
+type AgentKey = KeyRecord
 
 // CreateOrganization inserts an organization.
 func (db *DB) CreateOrganization(ctx context.Context, o Organization) error {
@@ -100,7 +110,14 @@ func (db *DB) CreateOwner(ctx context.Context, o Owner) error {
 // so a registration that half-succeeded would leave an unusable record that
 // nonetheless occupies its identifier forever.
 func (db *DB) CreateAgent(ctx context.Context, a Agent, key AgentKey) error {
-	return db.InTx(ctx, func(tx pgx.Tx) error {
+	return db.InTx(ctx, func(tx pgx.Tx) error { return insertAgent(ctx, tx, a, key) })
+}
+
+// insertAgent is the shared body: registration mints an agent inside a larger
+// transaction that also closes the registration, and both paths must create the
+// identity and its first key together or not at all.
+func insertAgent(ctx context.Context, tx pgx.Tx, a Agent, key AgentKey) error {
+	{
 		var orgID any
 		if a.OrganizationID != "" {
 			orgID = a.OrganizationID
@@ -109,14 +126,16 @@ func (db *DB) CreateAgent(ctx context.Context, a Agent, key AgentKey) error {
 			INSERT INTO agents (id, uai_id, did, owner_id, organization_id, logical_name, version,
 			                    agent_type, vendor, model_family, model_pinned, framework,
 			                    primary_jurisdiction, assurance_level, status,
-			                    identity_commitment, policy_version, genesis_event_hash)
+			                    identity_commitment, policy_version, genesis_event_hash,
+			                    identity_commitment_salt)
 			VALUES ($1,$2,$3,$4,$5,$6,COALESCE(NULLIF($7,''),'0.0.0'),$8,$9,$10,$11,$12,$13,
 			        COALESCE(NULLIF($14,''),'UAI-AL0')::assurance_level,
-			        COALESCE(NULLIF($15,''),'REGISTERED')::agent_status,$16,$17,$18)`,
+			        COALESCE(NULLIF($15,''),'REGISTERED')::agent_status,$16,$17,$18,$19)`,
 			a.ID, a.UAIID, a.DID, a.OwnerID, orgID, a.LogicalName, a.Version, a.AgentType,
 			nullable(a.Vendor), nullable(a.ModelFamily), a.ModelPinned, nullable(a.Framework),
 			a.PrimaryJurisdiction, a.AssuranceLevel, a.Status,
-			a.IdentityCommitment, a.PolicyVersion, a.GenesisEventHash)
+			a.IdentityCommitment, a.PolicyVersion, a.GenesisEventHash,
+			nullableBytes(a.IdentityCommitmentSalt))
 		if err != nil {
 			return classify(err)
 		}
@@ -127,7 +146,7 @@ func (db *DB) CreateAgent(ctx context.Context, a Agent, key AgentKey) error {
 			key.ID, a.ID, key.KeyID, key.Alg, key.PublicJWK, key.Protection,
 			key.ValidFrom, key.ValidUntil, key.LogIndex)
 		return classify(err)
-	})
+	}
 }
 
 // AgentByUAIID loads an agent by its UAI-ID.
@@ -165,7 +184,7 @@ func (db *DB) AgentKeys(ctx context.Context, agentID string) ([]AgentKey, error)
 	var out []AgentKey
 	for rows.Next() {
 		var k AgentKey
-		if err := rows.Scan(&k.ID, &k.AgentID, &k.KeyID, &k.Alg, &k.PublicJWK, &k.Protection,
+		if err := rows.Scan(&k.ID, &k.SubjectID, &k.KeyID, &k.Alg, &k.PublicJWK, &k.Protection,
 			&k.ValidFrom, &k.ValidUntil, &k.RevokedAt, &k.Compromised, &k.LogIndex); err != nil {
 			return nil, classify(err)
 		}
@@ -206,6 +225,13 @@ func (db *DB) RecordBinding(ctx context.Context, id, agentID, operation, previou
 		id, agentID, operation, nullable(previousEventHash), nullable(continuityProof),
 		nullable(spiffeID), nullable(reason), signature, signerKID)
 	return classify(err)
+}
+
+func nullableBytes(b []byte) any {
+	if len(b) == 0 {
+		return nil
+	}
+	return b
 }
 
 func nullable(s string) any {

@@ -323,4 +323,100 @@ BEGIN
     RAISE NOTICE 'PASS  INV-004  superseding writes a new statement and keeps the old one';
 END $$;
 
+-- ── §8 registration: the two-sided ownership proof ──────────────────────────
+--
+-- These assert the part of registration the database is responsible for. The
+-- signature checks live in internal/api; what must hold HERE is that no path --
+-- including a direct SQL statement by an administrator -- can rewrite what the
+-- two parties agreed to.
+
+INSERT INTO owner_keys (id, owner_id, key_id, alg, public_jwk, protection, valid_from)
+VALUES ('okey-1', 'own-1', 'key-1', 'EdDSA',
+        '{"kty":"OKP","crv":"Ed25519","x":"abc"}'::jsonb, 'HSM', now() - interval '1 hour');
+
+INSERT INTO registrations (id, logical_name, agent_type, owner_id, owner_did,
+                           primary_jurisdiction, policy_version,
+                           challenge_owner, challenge_agent, expires_at)
+VALUES ('reg_01JY8R9ZAF392N7QX2T81JH6KP', 'DeliveryOptimizer', 'autonomous_task_agent',
+        'own-1', 'did:uai:owner:01JY8R9ZB00000000000000000', 'AR', 'GASC-2027.4',
+        'challenge-for-the-owner', 'challenge-for-the-agent', now() + interval '300 seconds');
+
+SELECT assert_fails('REG', 'the two challenges cannot be the same value', $$
+    INSERT INTO registrations (id, logical_name, agent_type, owner_id, owner_did,
+                               primary_jurisdiction, policy_version,
+                               challenge_owner, challenge_agent, expires_at)
+    VALUES ('reg-same', 'X', 'autonomous_task_agent', 'own-1',
+            'did:uai:owner:01JY8R9ZB00000000000000000', 'AR', 'GASC-2027.4',
+            'same', 'same', now() + interval '300 seconds')$$);
+
+SELECT assert_fails('REG', 'half a proof is not a weaker proof, it is a corrupt row', $$
+    UPDATE registrations SET owner_proof_sig = '{"alg":"EdDSA"}'::jsonb
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+SELECT assert_fails('REG', 'an identity cannot be minted without both proofs', $$
+    UPDATE registrations SET minted_agent_id = 'ag-1', minted_at = now()
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+SELECT assert_fails('REG', 'the challenge window cannot be extended', $$
+    UPDATE registrations SET expires_at = now() + interval '1 year'
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+SELECT assert_fails('REG', 'a challenge cannot be swapped after issuance', $$
+    UPDATE registrations SET challenge_owner = 'attacker-chosen'
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+SELECT assert_fails('REG', 'the owner named by a registration cannot be changed', $$
+    UPDATE registrations SET owner_did = 'did:uai:owner:01ZZZZZZZZZZZZZZZZZZZZZZZZ'
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+-- The owner vouches for one agent key.
+UPDATE registrations
+   SET agent_key_thumbprint = 'sha256:' || repeat('7', 64),
+       owner_proof_sig = '{"alg":"EdDSA","value":"zOwner"}'::jsonb,
+       owner_proof_kid = 'did:uai:owner:01JY8R9ZB00000000000000000#key-1',
+       owner_proved_at = now()
+ WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP';
+
+SELECT assert_fails('REG', 'the subject cannot be renegotiated after the first proof', $$
+    UPDATE registrations SET agent_key_thumbprint = 'sha256:' || repeat('8', 64)
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+SELECT assert_fails('REG', 'a submitted proof cannot be replaced', $$
+    UPDATE registrations
+       SET owner_proof_sig = '{"alg":"EdDSA","value":"zRewritten"}'::jsonb,
+           owner_proof_kid = 'did:uai:owner:01JY8R9ZB00000000000000000#key-2',
+           owner_proved_at = now()
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+-- INV-006 extends to owner keys: a key that signed something stays resolvable,
+-- or every signature it ever made becomes unverifiable.
+SELECT assert_fails('REG', 'owner keys cannot be deleted', $$
+    DELETE FROM owner_keys WHERE id = 'okey-1'$$);
+
+SELECT assert_fails('REG', 'owner keys cannot be truncated', $$
+    TRUNCATE owner_keys$$);
+
+-- Closing the registration is the one legitimate transition, and it closes for
+-- good.
+UPDATE registrations
+   SET agent_proof_sig = '{"alg":"EdDSA","value":"zAgent"}'::jsonb,
+       agent_public_jwk = '{"kty":"OKP","crv":"Ed25519","x":"abc"}'::jsonb,
+       agent_proved_at = now()
+ WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP';
+UPDATE registrations SET minted_agent_id = 'ag-1', minted_at = now()
+ WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP';
+
+SELECT assert_fails('REG', 'a minted registration cannot mint again', $$
+    UPDATE registrations SET minted_agent_id = NULL, minted_at = NULL
+     WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP'$$);
+
+DO $$
+BEGIN
+    IF (SELECT minted_agent_id FROM registrations
+         WHERE id = 'reg_01JY8R9ZAF392N7QX2T81JH6KP') <> 'ag-1' THEN
+        RAISE EXCEPTION 'FAIL  REG  a fully proven registration could not be minted';
+    END IF;
+    RAISE NOTICE 'PASS  REG  a registration with both proofs mints exactly once';
+END $$;
+
 ROLLBACK;

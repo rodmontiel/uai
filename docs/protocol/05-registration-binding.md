@@ -52,6 +52,56 @@ sequenceDiagram
     REG-->>OW: 201 {uai_id, did, credentials, receipts, status: REGISTERED}
 ```
 
+### 8.2.1 The statement both halves sign
+
+Two details of 8.2 are easy to get wrong, and both were found by implementing it.
+
+**The agent is named by its key, not by its DID.** §6.4.1 draws the ownership proof over
+`jcs({challenge, agent_did, owner_did})`. That shape is right for the
+`AgentOwnershipCredential`, which is issued after the fact — but it cannot be what is signed
+*during* registration, because at that moment the agent has no DID. The ULID is minted only
+once both proofs verify. 8.2 says so precisely: the registry checks that both signatures
+reference the same **`(agent_pubkey, owner_did)`**.
+
+So the subject is the RFC 7638 thumbprint of the agent's public key. That is also the stronger
+binding of the two: a DID is an assertion *about* a key, while the thumbprint *is* the key.
+
+```json
+{
+  "challenge": "<the challenge issued for this role>",
+  "registration_id": "reg_01JY8R9ZAF392N7QX2T81JH6KM",
+  "role": "owner",
+  "agent_key_thumbprint": "sha256:…",
+  "owner_did": "did:uai:owner:01JY8R9ZB00000000000000000"
+}
+```
+
+Canonicalized with RFC 8785 and signed under `UAI-v1:challenge`. The owner half and the agent
+half differ in exactly two members — `role` and `challenge` — and must agree on every other
+one. `role` is redundant while the two challenges are distinct random values, and it is kept
+precisely so that a future change to challenge issuance cannot silently make one half's
+signature replayable as the other's.
+
+Consequences that follow, and that an implementation MUST enforce:
+
+| Rule | Why |
+|---|---|
+| The owner half MUST carry `agent_key_thumbprint` | A signature that does not name the agent key vouches for nothing. Without this member the "same subject" check of 8.2 cannot be expressed at all. |
+| The owner half MUST NOT carry `public_jwk` | The owner proves control of a key the registry already holds. A key taken from the request body would make ownership self-asserted — the exact failure 6.4.1 exists to prevent. |
+| The agent half MUST carry `public_jwk` | UAI never generates an agent's key, so it is introduced here. |
+| The first proof fixes the subject; the second MUST match it | Otherwise the party that goes first could rewrite what it vouched for after seeing the other half. |
+| A submitted proof is final | Same reason, one step later. |
+
+**The `{rid}` in `POST /agents/{rid}/prove` is a registration identifier.** It shares a path
+position with `GET /agents/{uai_id}` while meaning something different, so registration ids
+carry a `reg_` prefix and the two are impossible to confuse. Passing a UAI-ID there is a
+`400 UAI_MALFORMED_IDENTIFIER`, not a `404`: the resource does not merely happen to be missing,
+it cannot exist yet.
+
+An unanswered registration mints nothing — no identifier, no DID, no record any verifier can
+see. That is what makes it safe for this to be the one write path in UAI without proof of
+possession: the cost of spamming it is a row that expires in 300 seconds.
+
 ### 8.3 Registration record
 
 The registry stores, and the transparency log commits to:
@@ -80,6 +130,20 @@ The registry stores, and the transparency log commits to:
 
 `vendor_model.pinned = false` is meaningful: an agent's identity survives a model swap. Pinning
 is available for agents whose assurance argument depends on a specific model version.
+
+Two digests are derived from this record and they are not interchangeable:
+
+- **`genesis_event_hash`** = `SHA-256("UAI-v1:registration" || 0x00 || jcs(record))`. It anchors
+  the event chain: the first attestation references it as `previous_event_hash`, so a verifier
+  walking backwards from any action reaches registration through an unbroken hash path
+  ([§9.4](#94-event-chain-across-bindunbind)). It has its own domain rather than borrowing
+  `UAI-v1:attestation`, because a genesis record is not a claim about an action — sharing a
+  domain would let a crafted attestation hash be presented as an identity's origin.
+- **`identity_commitment`** = a salted commitment over the same record ([§7.3](04-cryptography.md)).
+  This is what reaches the consortium ledger. It is salted because the record is short and
+  guessable: an unsalted hash of it would be an index, not a commitment. The salt stays in the
+  registry, and a commitment whose salt was discarded could never be opened — which would make
+  it decorative rather than evidence.
 
 ### 8.4 Status after registration
 

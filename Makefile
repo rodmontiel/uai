@@ -124,9 +124,11 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 		-e POSTGRES_DB=uai -p 127.0.0.1:55433:5432 $(PG_IMAGE) >/dev/null
 	@for i in $$(seq 1 40); do \
 		$(CONTAINER) exec uai-pg-test pg_isready -U uai >/dev/null 2>&1 && break; sleep 1; done
-	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0001_init.up.sql
-	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/migrations/0002_governance.up.sql
-	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < db/seed/0001_jurisdictions.up.sql
+	@# Every migration, in order, discovered rather than listed: a hardcoded list
+	@# means a new migration is silently untested the day it is added.
+	@for f in $$(ls db/migrations/*.up.sql db/seed/*.up.sql | sort); do \
+		$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q < $$f || exit 1; \
+	done
 	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
 		$(GO) test ./internal/store/... ./internal/api/... -count=1 -race
 	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \

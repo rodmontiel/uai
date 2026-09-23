@@ -47,6 +47,7 @@ exploited class of bug.
 | `UAI-v1:attestation` | Action attestations |
 | `UAI-v1:credential` | Verifiable credential proofs |
 | `UAI-v1:did-document` | DID Document versions |
+| `UAI-v1:registration` | Registration records; the genesis hash of an event chain |
 | `UAI-v1:challenge` | Registration / binding challenge responses |
 | `UAI-v1:vote` | Human delegate votes |
 | `UAI-v1:decision` | Policy decision records |

@@ -109,6 +109,22 @@ history; a guardrail decision cannot omit its policy version; a chain fork canno
 psql -v ON_ERROR_STOP=1 -f test/invariants/invariants.sql
 ```
 
+### Ownership is proven, not declared
+
+Registering an agent takes **two signatures that name the same subject** — one from the owner's
+key, which UAI already holds, and one from the agent's key, which is introduced in the same
+exchange. Neither party can register alone: an owner cannot claim an agent it does not control,
+and an agent cannot attach itself to an owner that never vouched for it.
+
+The asymmetry between the two halves is the whole argument. The agent's key arrives in the
+request because it is being introduced. The owner's key is read from the registry and is
+rejected if it arrives in the request — a key supplied by the caller would make ownership
+self-asserted, which is the one thing the flow exists to prevent.
+
+Registration is also the only write path in UAI without proof of possession, because
+establishing the agent's key is what it does. That is safe because it mints nothing: an
+unanswered registration leaves no identifier, no DID and no record any verifier can see.
+
 ## Design priorities
 
 In every trade-off, in this order:

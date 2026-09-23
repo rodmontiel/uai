@@ -33,13 +33,20 @@ declarado existe en el repo.
 - **Fase 2 ✅** — 10 JSON Schemas con 40 ejemplos, 3 contextos JSON-LD, OpenAPI 3.1 (21 paths),
   9 sets de vectores normativos y `tools/uai-conformance` (125 chequeos).
 - **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + 35 invariantes ejecutables
-  (`test/invariants/invariants.sql`).
+  (`test/invariants/invariants.sql`; hoy 47).
 - **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
   `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
   (checkpoints, receipts, co-firma de witnesses).
 - **Fase 4 🟡** — `internal/store` (persistencia con cadena de eventos atómica), `internal/api`
   (problem+json, middleware de PoP e idempotencia, handlers de attestation y verificación),
-  `services/gateway`. Faltan registro, binding y emisión de credenciales.
+  `services/gateway`, y el **flujo de registro completo** (§8: doble desafío owner+agente,
+  `pkg/challenge`, thumbprint RFC 7638 en `pkg/uaicrypto`, migración 0003). Faltan binding
+  (§9: BIND/UNBIND/REBIND) y emisión de credenciales.
+
+  **Hueco conocido, a cerrar con binding:** `statusRefusal` deja atestiguar a un agente en
+  `REGISTERED`. Según §6.10 las acciones salen de `ACTIVE`, y llegar a `ACTIVE` exige binding
+  de runtime. Exigir `ACTIVE` hoy dejaría la attestation inalcanzable hasta que exista binding,
+  así que se cierra junto con él y no antes.
 - Fases 6–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con

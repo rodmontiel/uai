@@ -84,8 +84,18 @@ paths:
       tags: [identity]
       operationId: submitRegistrationProof
       summary: Submit an owner or agent proof of possession
+      description: |
+        The path identifier is a REGISTRATION id, not a UAI-ID. No UAI-ID exists at this point in
+        the flow: the ULID is minted only after both proofs verify (§8.2), so an agent identifier
+        here would name something that does not yet exist. The `reg_` prefix makes the two
+        impossible to confuse.
+
+        Each half resolves its verification key differently, and the asymmetry is the security
+        argument. The agent's key arrives in `public_jwk` because it is being introduced. The
+        owner's key is read from the registry and MUST NOT be sent: a key supplied by the caller
+        would make ownership self-asserted, which is exactly what §6.4.1 exists to prevent.
       parameters:
-        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/RegistrationId'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -98,8 +108,14 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisteredAgent' }
+        '202':
+          description: Proof accepted; the other half is still outstanding
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendingRegistration' }
         '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /agents/{id}:
     get:
@@ -584,6 +600,14 @@ components:
       schema:
         type: string
         pattern: '^uai:agent:[0-9A-HJKMNP-TV-Z]{26}$'
+    RegistrationId:
+      name: id
+      in: path
+      required: true
+      description: Registration identifier from the 202 of POST /agents. NOT a UAI-ID.
+      schema:
+        type: string
+        pattern: '^reg_[0-7][0-9A-HJKMNP-TV-Z]{25}$'
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -652,8 +676,30 @@ components:
       properties:
         role: { enum: [owner, agent] }
         challenge: { type: string }
-        public_jwk: { type: object }
+        agent_key_thumbprint:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+          description: |
+            RFC 7638 thumbprint of the agent key this proof vouches for. REQUIRED for the owner
+            half: a signature that does not name the agent key vouches for nothing, and without
+            it the "both halves reference the same subject" rule of §8.2 cannot be expressed at
+            all. Optional for the agent half, where it is derived from public_jwk; if sent it
+            MUST match.
+        public_jwk:
+          type: object
+          description: |
+            The agent's public key. Sent ONLY by the agent half; the registry MUST reject an
+            owner half that carries one.
         signature: { type: object }
+
+    PendingRegistration:
+      type: object
+      required: [registration_id, status, awaiting, expires_in]
+      properties:
+        registration_id: { type: string }
+        status: { type: string, enum: [AWAITING_PROOF] }
+        awaiting: { type: string, enum: [owner, agent] }
+        expires_in: { type: integer }
 
     RegisteredAgent:
       type: object
@@ -666,6 +712,13 @@ components:
           enum: [UNREGISTERED, REGISTERED, VERIFIED, ACTIVE, UNBOUND, QUARANTINED, REVOCATION_AUTHORIZED, REVOKED]
         assurance_level: { enum: [UAI-AL0, UAI-AL1, UAI-AL2, UAI-AL3] }
         identity_commitment: { type: string }
+        genesis_event_hash:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+          description: |
+            Anchor of the agent's event chain. The first attestation references it as
+            previous_event_hash, so a verifier walking backwards from any action reaches
+            registration through an unbroken hash path.
         policy_version: { type: string }
         transparency: { type: object }
 

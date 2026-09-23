@@ -80,6 +80,13 @@
       "payload_utf8": "{\"a\":1}",
       "signing_input_hex": "5541492d76313a6175646974007b2261223a317d",
       "digest": "sha256:340671037620eada130fdf91a74900360927fb3486d7b59cef7cfb8d8529f003"
+    },
+    {
+      "name": "domain UAI-v1:registration",
+      "domain": "UAI-v1:registration",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a726567697374726174696f6e007b2261223a317d",
+      "digest": "sha256:5d0f0a5f95725fb856207386946d343f87064460e01a40f036b8c2a26743c67f"
     }
   ]
 }
