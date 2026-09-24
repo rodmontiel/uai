@@ -95,7 +95,8 @@ func sign(args []string) error {
 	threshold := fs.String("threshold", "3-of-5", "M-of-N")
 	policyID := fs.String("id", "GASC", "policy id")
 	version := fs.String("version", "", "policy version (default: from the directory name)")
-	effective := fs.String("effective", "2027-04-01T00:00:00Z", "effective date")
+	effective := fs.String("effective", "",
+		"effective date (default: keep the one in the existing manifest)")
 	previous := fs.String("previous", "", "previous_policy_hash")
 	_ = fs.Parse(args)
 	if *dir == "" || *keys == "" {
@@ -105,7 +106,15 @@ func sign(args []string) error {
 	if v == "" {
 		v = strings.TrimPrefix(filepath.Base(*dir), strings.ToLower(*policyID)+"-")
 	}
-	effectiveAt, err := time.Parse(time.RFC3339, *effective)
+
+	// The effective date is CARRIED FORWARD, not defaulted.
+	//
+	// It used to default to a fixed future date, so re-signing a bundle after
+	// editing one rule silently moved when the whole thing took effect -- and a
+	// gateway that fails closed then refuses to start, which is correct
+	// behaviour reporting a change nobody made. Re-signing answers "who
+	// approves these rules"; it must not also answer "when do they apply".
+	effectiveAt, err := effectiveDate(*dir, *effective)
 	if err != nil {
 		return err
 	}
@@ -219,4 +228,30 @@ func readBundle(dir string) (policy.Files, error) {
 		return nil
 	})
 	return files, err
+}
+
+// effectiveDate resolves the effective date for a signing run.
+//
+// An explicit -effective always wins. Otherwise the existing manifest's date is
+// kept. A bundle with no manifest and no flag is refused rather than given a
+// date: staging a policy for a future quarter is a deliberate governance act,
+// and picking one on the operator's behalf would make it an accident.
+func effectiveDate(dir, explicit string) (time.Time, error) {
+	if explicit != "" {
+		return time.Parse(time.RFC3339, explicit)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"uai-policy sign: no manifest to take the effective date from; pass -effective: %w", err)
+	}
+	var existing policy.Manifest
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return time.Time{}, err
+	}
+	if existing.EffectiveDate.IsZero() {
+		return time.Time{}, fmt.Errorf(
+			"uai-policy sign: the existing manifest has no effective date; pass -effective")
+	}
+	return existing.EffectiveDate, nil
 }

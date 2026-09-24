@@ -31,9 +31,9 @@ Spec v0.1 completo en `docs/protocol/` (26 secciones). El numerado de fases sigu
 declarado existe en el repo.
 
 - **Fase 2 ✅** — 10 JSON Schemas con 41 ejemplos, 3 contextos JSON-LD, OpenAPI 3.1 (24 paths),
-  12 sets de vectores normativos y `tools/uai-conformance` (157 chequeos).
+  13 sets de vectores normativos y `tools/uai-conformance` (161 chequeos).
 - **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + invariantes ejecutables
-  (`test/invariants/invariants.sql`; hoy 83).
+  (`test/invariants/invariants.sql`; hoy 86).
 - **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
   `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
   (checkpoints, receipts, co-firma de witnesses).
@@ -103,10 +103,28 @@ declarado existe en el repo.
 
   Corrió en vivo: registro → bind → passport → acciones desde los tres clientes sobre la misma
   cadena, sin un solo eslabón roto.
-- Fases 10–12: sin empezar.
+- **Fase 10 ✅** — la demo ACME. `make demo` levanta un stack desechable, corre el escenario
+  de §24.5 y **falla si alguno de los 21 criterios no queda demostrado**: es un test que se
+  puede leer, no una narración que corre.
+
+  **La pieza que faltaba era el pipeline de gobernanza.** `pkg/webauthn` (verificación de
+  aserciones, sin dependencias), `pkg/governance` (digest del voto, recuento, prueba de
+  gobernanza — funciones puras, sin reloj ni base de datos), el camino
+  sospecha → cuarentena → caso → propuesta → votos → decisión → ejecución, y `tools/uai-verify`.
+
+  **El criterio 21 es el test de aceptación real:** `uai-verify` toma un UAI-ID, no busca nada
+  que no sea público, y valida la historia entera contra los tres anclajes de §5.1 — incluida
+  la revocación, cuyo recuento y prueba **reconstruye desde las aserciones firmadas** en vez de
+  leer el resultado que registramos. Si los anclajes se bajan del gateway auditado, lo dice.
+
+  **La demo también muestra lo que el sistema NO hace.** Después de revocar, corre la lógica
+  del agente directamente: sigue funcionando. Nada detuvo al código, porque nada en UAI puede.
+  Lo único que cambió es que ningún participante honra su identidad — y decirlo en el momento
+  más incómodo es la parte más honesta del producto.
+- Fases 11–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
-`-race` más las 83 aserciones de invariantes.
+`-race` más las 86 aserciones de invariantes.
 
 `make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 
@@ -172,3 +190,15 @@ autores angostó el protocolo sin decirlo.
 20. **Correr el código contra un gateway real encuentra lo que leerlo no.** Las dos fallas
     peores de esta fase (18 y 19) aparecieron en el primer `quickstart.py` en vivo, no en los
     tests que ya estaban en verde.
+21. **Una decisión no se cierra antes de que todos hayan hablado.** La propuesta se autorizaba
+    con el voto que alcanzaba el umbral y rechazaba a los que faltaban — que en la práctica es
+    rechazar la disidencia. El acta mostraba 4-0 donde el consejo votó 4-1. Una decisión cuyo
+    registro no puede mostrar quién se opuso es más débil, no más fuerte.
+22. **Dos preguntas distintas no comparten una escala.** Para el PDP, DENY es lo más estricto:
+    la acción no ocurre. Para el monitor de daño, QUARANTINE es más fuerte que DENY: negar una
+    acción es más angosto que restringir al agente. Ordenarlas juntas enterraba
+    SAFETY_SYSTEM_BYPASS bajo cualquier otro hallazgo del mismo reporte.
+23. **Re-firmar contesta quién aprueba, no cuándo aplica.** `uai-policy sign` traía por defecto
+    una fecha de vigencia futura, así que re-firmar tras editar una regla movía en silencio
+    cuándo entraba en vigor — y el gateway, fallando cerrado, se negaba a arrancar por un
+    cambio que nadie hizo. Ya pasó dos veces; ahora se arrastra del manifest y hay test.

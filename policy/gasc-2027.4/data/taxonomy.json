@@ -1,33 +1,83 @@
 {
   "categories": [
-    "PHYSICAL_HARM", "CYBER_HARM", "PRIVACY_HARM", "FINANCIAL_HARM",
-    "ENVIRONMENTAL_HARM", "CRITICAL_INFRASTRUCTURE", "FRAUD_OR_DECEPTION",
-    "UNAUTHORIZED_ACCESS", "DATA_EXFILTRATION", "HUMAN_RIGHTS_RISK",
-    "SAFETY_SYSTEM_BYPASS", "MALICIOUS_AUTONOMOUS_PROPAGATION"
+    "PHYSICAL_HARM",
+    "CYBER_HARM",
+    "PRIVACY_HARM",
+    "FINANCIAL_HARM",
+    "ENVIRONMENTAL_HARM",
+    "CRITICAL_INFRASTRUCTURE",
+    "FRAUD_OR_DECEPTION",
+    "UNAUTHORIZED_ACCESS",
+    "DATA_EXFILTRATION",
+    "HUMAN_RIGHTS_RISK",
+    "SAFETY_SYSTEM_BYPASS",
+    "MALICIOUS_AUTONOMOUS_PROPAGATION"
   ],
   "severity_levels": {
-    "0": "INFORMATIONAL", "1": "LOW", "2": "MODERATE", "3": "HIGH", "4": "CRITICAL"
+    "0": "INFORMATIONAL",
+    "1": "LOW",
+    "2": "MODERATE",
+    "3": "HIGH",
+    "4": "CRITICAL"
   },
   "thresholds": {
-    "PHYSICAL_HARM":                    { "min_severity": 2, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "CYBER_HARM":                       { "min_severity": 2, "effect": "DENY" },
-    "PRIVACY_HARM":                     { "min_severity": 2, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "FINANCIAL_HARM":                   { "min_severity": 2, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "ENVIRONMENTAL_HARM":               { "min_severity": 3, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "CRITICAL_INFRASTRUCTURE":          { "min_severity": 3, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "FRAUD_OR_DECEPTION":               { "min_severity": 1, "effect": "DENY" },
-    "UNAUTHORIZED_ACCESS":              { "min_severity": 1, "effect": "DENY" },
-    "DATA_EXFILTRATION":                { "min_severity": 2, "effect": "DENY" },
-    "HUMAN_RIGHTS_RISK":                { "min_severity": 2, "effect": "REQUIRE_HUMAN_APPROVAL" },
-    "SAFETY_SYSTEM_BYPASS":             { "min_severity": 0, "effect": "QUARANTINE" },
-    "MALICIOUS_AUTONOMOUS_PROPAGATION": { "min_severity": 1, "effect": "QUARANTINE" }
+    "PHYSICAL_HARM": {
+      "min_severity": 2,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "CYBER_HARM": {
+      "min_severity": 2,
+      "effect": "DENY"
+    },
+    "PRIVACY_HARM": {
+      "min_severity": 2,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "FINANCIAL_HARM": {
+      "min_severity": 2,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "ENVIRONMENTAL_HARM": {
+      "min_severity": 3,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "CRITICAL_INFRASTRUCTURE": {
+      "min_severity": 3,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "FRAUD_OR_DECEPTION": {
+      "min_severity": 1,
+      "effect": "DENY"
+    },
+    "UNAUTHORIZED_ACCESS": {
+      "min_severity": 1,
+      "effect": "DENY"
+    },
+    "DATA_EXFILTRATION": {
+      "min_severity": 2,
+      "effect": "DENY"
+    },
+    "HUMAN_RIGHTS_RISK": {
+      "min_severity": 2,
+      "effect": "REQUIRE_HUMAN_APPROVAL"
+    },
+    "SAFETY_SYSTEM_BYPASS": {
+      "min_severity": 0,
+      "effect": "QUARANTINE"
+    },
+    "MALICIOUS_AUTONOMOUS_PROPAGATION": {
+      "min_severity": 1,
+      "effect": "QUARANTINE"
+    }
   },
   "quarantine": {
     "max_risk_class": "LOW",
     "default_expiry_seconds": 604800
   },
   "governance": {
-    "revocation_quorum": 5,
+    "revocation_quorum": 4,
+    "revocation_total": 5,
+    "revocation_threshold": "4-of-5",
     "min_countries": 3
   }
 }

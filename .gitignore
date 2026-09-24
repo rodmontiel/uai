@@ -31,3 +31,16 @@ raw/
 contracts/out/
 contracts/cache/
 contracts/lib/
+
+# Compiled binaries built at the repository root by `go build ./tools/...`.
+# One slipped into a commit already: 31 MB of build output nobody reviews.
+/uai-conformance
+/uai-grant
+/uai-keygen
+/uai-migrate
+/uai-policy
+/uai-vectors
+/uai-verify
+/uai-mcp
+/gateway
+/ledger-writer

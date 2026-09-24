@@ -1,0 +1,111 @@
+{
+  "vector_set": "governance/vote-assertion",
+  "uai_version": "0.1",
+  "description": "A human delegate's vote, carried by a WebAuthn assertion whose CHALLENGE is the vote digest. That is what makes INV-005 cryptographic rather than procedural: the signature covers the voted content, so no process that did not touch the authenticator can produce one, and an assertion cannot be replayed onto a different vote. An assertion with the user-verified flag clear is not a vote and must be refused.",
+  "reference": "docs/protocol/10-governance-revocation.md#161-how-a-vote-is-cast",
+  "cases": [
+    {
+      "name": "a delegate votes YES",
+      "statement": {
+        "case_id": "UAI-INC-000041",
+        "proposal": "PERMANENT_REVOCATION",
+        "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+        "evidence_digest": "sha256:3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b",
+        "delegate_did": "did:uai:delegate:01JY8RD40000000000000000AR",
+        "vote": "YES",
+        "nonce": "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e"
+      },
+      "vote_digest": "sha256:f1e2ff7f94f291cb963eca0e652f769f3780506bf72290f15450925247782ef1",
+      "authenticator_data_b64url": "tfQfQZqYyWU02YK8crprsRzCgQarsldLF0XMhR1i2SYFAAAAKg",
+      "client_data_json_b64url": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOGVMX2Y1VHlrY3VXUHNvT1pTOTJuemVBVUd2M0lwRHhWRkNTVWtkNEx2RSIsIm9yaWdpbiI6Imh0dHBzOi8vZ292ZXJuYW5jZS51YWkud29ybGQiLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature_b64url": "cpOkinvpc95y-B-fUnIuNigudP3xw1OaJSHJlaVQCEUKP9BlF5EHL5DwS0WJmCuN-KAWkimjMSBJlgf1d9xXAA",
+      "public_key_jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "ntuMPo-Ra6rFbo5Q0_i1rXQDh2h60HLihgKHxZY2jCE"
+      },
+      "relying_party_id": "governance.uai.world",
+      "origin": "https://governance.uai.world",
+      "user_verified": true,
+      "must_verify": true
+    },
+    {
+      "name": "the same ceremony without user verification is not a vote",
+      "statement": {
+        "case_id": "UAI-INC-000041",
+        "proposal": "PERMANENT_REVOCATION",
+        "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+        "evidence_digest": "sha256:3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b",
+        "delegate_did": "did:uai:delegate:01JY8RD40000000000000000AR",
+        "vote": "YES",
+        "nonce": "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e"
+      },
+      "vote_digest": "sha256:f1e2ff7f94f291cb963eca0e652f769f3780506bf72290f15450925247782ef1",
+      "authenticator_data_b64url": "tfQfQZqYyWU02YK8crprsRzCgQarsldLF0XMhR1i2SYBAAAAKg",
+      "client_data_json_b64url": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOGVMX2Y1VHlrY3VXUHNvT1pTOTJuemVBVUd2M0lwRHhWRkNTVWtkNEx2RSIsIm9yaWdpbiI6Imh0dHBzOi8vZ292ZXJuYW5jZS51YWkud29ybGQiLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature_b64url": "p2GARZyaLzd7G-jknRpuf0Yyz9T1QDxcTluXS9WYtCPR8vVs5mwUgcK-xbv1S73LBP6NCFo3dQE85sWy7zEVDw",
+      "public_key_jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "ntuMPo-Ra6rFbo5Q0_i1rXQDh2h60HLihgKHxZY2jCE"
+      },
+      "relying_party_id": "governance.uai.world",
+      "origin": "https://governance.uai.world",
+      "user_verified": false,
+      "must_verify": false,
+      "failure_reason": "INV-005: an assertion without user verification proves a device was present, not that a human decided. Counting it would make the threshold mean something else."
+    },
+    {
+      "name": "an assertion cannot be lifted onto another case",
+      "statement": {
+        "case_id": "UAI-INC-000042",
+        "proposal": "PERMANENT_REVOCATION",
+        "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+        "evidence_digest": "sha256:3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b",
+        "delegate_did": "did:uai:delegate:01JY8RD40000000000000000AR",
+        "vote": "YES",
+        "nonce": "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e"
+      },
+      "vote_digest": "sha256:fa313916727b1509649785cf9cfbeeac8061c9e40ef29347f7fd0816f9a3cb9f",
+      "authenticator_data_b64url": "tfQfQZqYyWU02YK8crprsRzCgQarsldLF0XMhR1i2SYFAAAAKg",
+      "client_data_json_b64url": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOGVMX2Y1VHlrY3VXUHNvT1pTOTJuemVBVUd2M0lwRHhWRkNTVWtkNEx2RSIsIm9yaWdpbiI6Imh0dHBzOi8vZ292ZXJuYW5jZS51YWkud29ybGQiLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature_b64url": "cpOkinvpc95y-B-fUnIuNigudP3xw1OaJSHJlaVQCEUKP9BlF5EHL5DwS0WJmCuN-KAWkimjMSBJlgf1d9xXAA",
+      "public_key_jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "ntuMPo-Ra6rFbo5Q0_i1rXQDh2h60HLihgKHxZY2jCE"
+      },
+      "relying_party_id": "governance.uai.world",
+      "origin": "https://governance.uai.world",
+      "user_verified": true,
+      "must_verify": false,
+      "failure_reason": "the challenge inside the assertion is the digest of a different case"
+    },
+    {
+      "name": "an assertion produced for another origin is refused",
+      "statement": {
+        "case_id": "UAI-INC-000041",
+        "proposal": "PERMANENT_REVOCATION",
+        "subject_agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+        "evidence_digest": "sha256:3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b3e7b",
+        "delegate_did": "did:uai:delegate:01JY8RD40000000000000000AR",
+        "vote": "YES",
+        "nonce": "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e"
+      },
+      "vote_digest": "sha256:f1e2ff7f94f291cb963eca0e652f769f3780506bf72290f15450925247782ef1",
+      "authenticator_data_b64url": "tfQfQZqYyWU02YK8crprsRzCgQarsldLF0XMhR1i2SYFAAAAKg",
+      "client_data_json_b64url": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOGVMX2Y1VHlrY3VXUHNvT1pTOTJuemVBVUd2M0lwRHhWRkNTVWtkNEx2RSIsIm9yaWdpbiI6Imh0dHBzOi8vbm90LXVhaS5leGFtcGxlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "signature_b64url": "7_7FwXA5NFTdNCdOeNW8WAok4Lw6JZDaVBLK4XhHXwVe_1pbeSl0f5uQfs9heleXlEjvK2dOK6Lt-D9l6MKXCA",
+      "public_key_jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "ntuMPo-Ra6rFbo5Q0_i1rXQDh2h60HLihgKHxZY2jCE"
+      },
+      "relying_party_id": "governance.uai.world",
+      "origin": "https://governance.uai.world",
+      "user_verified": true,
+      "must_verify": false,
+      "failure_reason": "the ceremony happened at another origin"
+    }
+  ]
+}

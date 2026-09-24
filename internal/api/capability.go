@@ -299,10 +299,23 @@ func (s *Server) fileSuspicion(w http.ResponseWriter, r *http.Request) {
 		WriteStoreError(w, r, err)
 		return
 	}
+	// What the policy says this warrants, and doing it. The escalation never
+	// fails the report: a suspicion that was recorded but could not be escalated
+	// is still on file, and losing the report because the follow-up failed
+	// would be the worst of both.
+	escalation, escErr := s.escalate(r.Context(), agent, body, filed, s.now().UTC())
+	if escErr != nil {
+		problemLog(r, "escalate suspicion", escErr)
+		escalation = Escalation{Effect: "PENDING_REVIEW",
+			Note: "The report is recorded. The automatic follow-up did not complete and is " +
+				"flagged for an investigator."}
+	}
+
 	WriteJSON(w, http.StatusAccepted, map[string]any{
 		"suspicion_id": filed,
 		"subject":      agent.UAIID,
 		"state":        "RECEIVED",
+		"escalation":   escalation,
 		// The count is the number of DISTINCT reporters of the same conduct. It
 		// is reported because it is the number that matters to whoever triages,
 		// and because inflating it is what a coordinated accuser would try.

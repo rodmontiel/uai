@@ -73,9 +73,19 @@ var requiredPaths = []string{
 	"/suspicions",
 	"/cases/{id}",
 	"/quarantines",
-	"/governance/cases/{id}/vote",
+	// Against a proposal, not a case: a case may carry more than one proposal,
+	// and a vote addressed to the case would be ambiguous the first time it does.
+	"/governance/proposals/{id}/vote",
+	"/governance/proposals/{id}",
+	"/revocations/{decisionId}",
 	"/revocations/{decisionId}/execute",
 	"/verify/{uaiId}",
+	// What an independent verifier needs (§5.1). Listed as required because a
+	// build that served everything else and not these would be a build nobody
+	// could audit without trusting it.
+	"/agents/{id}/did.json",
+	"/log/checkpoint",
+	"/trust-anchors",
 }
 
 // idempotencyExempt lists the state-changing operations that deliberately do

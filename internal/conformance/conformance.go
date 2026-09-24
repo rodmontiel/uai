@@ -24,10 +24,12 @@ import (
 	"net/http"
 
 	"github.com/rodmontiel/uai/internal/testvectors"
+	"github.com/rodmontiel/uai/pkg/governance"
 	"github.com/rodmontiel/uai/pkg/merkle"
 	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
+	"github.com/rodmontiel/uai/pkg/webauthn"
 )
 
 // CaseResult is the outcome of one vector case.
@@ -65,6 +67,7 @@ func All() []Result {
 	return []Result{
 		JCS(), Digest(), Commitment(), Thumbprint(), MerkleHashing(), MerkleProofs(),
 		Ed25519(), ECDSA(), Identifiers(), EventChain(), SigningPayload(), PoP(),
+		VoteAssertions(),
 	}
 }
 
@@ -281,6 +284,73 @@ func SigningPayload() Result {
 		r.Cases = append(r.Cases, pass(c.Name))
 	}
 	return r
+}
+
+// VoteAssertions checks a delegate's WebAuthn assertion over a vote digest.
+//
+// Both directions are checked: the digest recomputed from the statement, and
+// the assertion accepted or refused as the vector says. An implementation that
+// agreed on the digest but accepted an assertion without user verification
+// would recompute tallies that include votes no human cast.
+func VoteAssertions() Result {
+	const file = "governance/vote-assertion.json"
+	r := Result{Set: "governance/vote-assertion", File: file}
+	set, err := testvectors.Load[testvectors.VoteAssertionCase](file)
+	if err != nil {
+		r.LoadError = err
+		return r
+	}
+	r.Description = set.Description
+	for _, c := range set.Cases {
+		var statement governance.Statement
+		if err := json.Unmarshal(c.Statement, &statement); err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "statement: %v", err))
+			continue
+		}
+		digest, err := statement.Digest()
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "vote digest: %v", err))
+			continue
+		}
+		if got := uaicrypto.FormatDigest(digest); got != c.VoteDigest {
+			r.Cases = append(r.Cases, fail(c.Name, "vote digest = %s, want %s", got, c.VoteDigest))
+			continue
+		}
+		pub, err := uaicrypto.PublicFromJWKBytes(c.PublicKeyJWK)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "delegate key: %v", err))
+			continue
+		}
+		assertion := webauthn.Assertion{
+			AuthenticatorData: b64url(c.AuthenticatorData),
+			ClientDataJSON:    b64url(c.ClientDataJSON),
+			Signature:         b64url(c.Signature),
+		}
+		verifyErr := webauthn.Verify(pub, assertion, webauthn.Expectation{
+			Challenge: digest, Origin: c.Origin, RelyingPartyID: c.RelyingPartyID,
+		})
+		accepted := verifyErr == nil
+		switch {
+		case c.MustVerify && !accepted:
+			r.Cases = append(r.Cases, fail(c.Name, "expected acceptance: %v", verifyErr))
+		case !c.MustVerify && accepted:
+			r.Cases = append(r.Cases, fail(c.Name,
+				"expected the assertion to be REFUSED (%s) but it was accepted", c.FailureReason))
+		default:
+			r.Cases = append(r.Cases, pass(c.Name))
+		}
+	}
+	return r
+}
+
+// b64url decodes an unpadded base64url field, returning nil on failure so the
+// verification step reports the refusal rather than this helper.
+func b64url(s string) []byte {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil
+	}
+	return raw
 }
 
 // MerkleHashing checks the RFC 6962 leaf and node prefixes.

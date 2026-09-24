@@ -21,6 +21,15 @@ const DefaultPolicyVersion = "GASC-2027.4"
 // DefaultAudience is the registry identifier carried in binding statements.
 const DefaultAudience = "uai-agent-registry"
 
+// Governance defaults. The relying party is where delegates vote; the minimum
+// country count is the jurisdictional spread a revocation needs, and the real
+// value comes from the signed bundle (§16) rather than from this constant.
+const (
+	DefaultGovernanceRPID   = "governance.uai.world"
+	DefaultGovernanceOrigin = "https://governance.uai.world"
+	DefaultMinCountries     = 3
+)
+
 // Server is the UAI HTTP surface.
 type Server struct {
 	db       *store.DB
@@ -46,6 +55,23 @@ type Server struct {
 	// PDP that permitted anything while it had no rules would be worse than
 	// one that was simply down.
 	bundle *pdp.Bundle
+	// governanceOrigin and governanceRPID are what a delegate's authenticator
+	// must have scoped its assertion to. They are configuration rather than
+	// constants because a deployment runs its governance UI somewhere: an
+	// assertion produced for another origin is refused, and getting these wrong
+	// refuses every genuine vote rather than accepting a forged one.
+	governanceOrigin string
+	governanceRPID   string
+	// minCountries is the jurisdictional spread a revocation needs, read from
+	// the policy bundle. M-of-N alone is satisfiable inside one jurisdiction,
+	// and a revocation decided there is a national decision wearing an
+	// international label.
+	minCountries int
+	// revoker publishes a revocation on the consortium chain. Nil means the
+	// chain step is skipped and the response says so: §18.5 is explicit that a
+	// ledger outage must not block a decision the delegates already made.
+	revoker Revoker
+	chainID int64
 	// translog registers signed statements and issues receipts. Nil means the
 	// service runs without transparency: attestations still work and say so in
 	// their response, because a log outage must not force unattested execution.
@@ -78,13 +104,30 @@ func WithIssuer(did string, signer uaicrypto.Signer) Option {
 	return func(srv *Server) { srv.issuerDID, srv.issuer = did, signer }
 }
 
+// WithGovernance sets the WebAuthn relying party a delegate's vote must name.
+func WithGovernance(rpID, origin string, minCountries int) Option {
+	return func(srv *Server) {
+		srv.governanceRPID, srv.governanceOrigin = rpID, origin
+		if minCountries > 0 {
+			srv.minCountries = minCountries
+		}
+	}
+}
+
+// WithRevoker attaches the on-chain revocation path.
+func WithRevoker(r Revoker, chainID int64) Option {
+	return func(srv *Server) { srv.revoker, srv.chainID = r, chainID }
+}
+
 // WithClock overrides the clock, for tests.
 func WithClock(f func() time.Time) Option { return func(srv *Server) { srv.now = f } }
 
 // NewServer builds the HTTP surface.
 func NewServer(db *store.DB, opts ...Option) *Server {
 	s := &Server{db: db, resolver: NewStoreResolver(db), scheme: "https",
-		policyVersion: DefaultPolicyVersion, audience: DefaultAudience, now: time.Now}
+		policyVersion: DefaultPolicyVersion, audience: DefaultAudience, now: time.Now,
+		governanceRPID: DefaultGovernanceRPID, governanceOrigin: DefaultGovernanceOrigin,
+		minCountries: DefaultMinCountries}
 	for _, o := range opts {
 		o(s)
 	}
@@ -192,11 +235,45 @@ func (s *Server) Routes() http.Handler {
 		RequireIdempotency(s.db, "POST /v1/suspicions"),
 	))
 
+	// Governance (§16). A vote is not behind proof of possession by a UAI key:
+	// the WebAuthn assertion IS the authentication, and it authenticates
+	// something a software credential cannot — that a human touched a token.
+	// Putting a second software credential in front of it would reintroduce
+	// exactly what the hardware requirement removes.
+	// Behind an idempotency key: a delegate whose submission times out retries,
+	// and without one the retry meets the "one live vote per delegate" index and
+	// gets a conflict instead of the answer their first attempt already earned.
+	mux.Handle("POST /v1/governance/proposals/{id}/vote", Chain(
+		http.HandlerFunc(s.castVote), CaptureBody,
+		RequireIdempotency(s.db, "POST /v1/governance/proposals/{id}/vote")))
+	mux.Handle("GET /v1/governance/proposals/{id}",
+		Chain(http.HandlerFunc(s.getProposal), CaptureBody))
+	mux.Handle("GET /v1/revocations/{decisionId}",
+		Chain(http.HandlerFunc(s.getRevocationDecision), CaptureBody))
+
+	// The administrator's entire write surface (§16.3). One route, one input:
+	// a decision id. Every consequence is already fixed by the governance
+	// proof, which is recomputed here from the signed assertions.
+	mux.Handle("POST /v1/revocations/{decisionId}/execute", Chain(
+		http.HandlerFunc(s.executeRevocation),
+		CaptureBody,
+		RequirePoP(s.db, uaicrypto.DomainRevocation, s.scheme),
+		RequireIdempotency(s.db, "POST /v1/revocations/{decisionId}/execute"),
+	))
+
 	// Public, read-only surfaces. Unauthenticated for the same reason /verify
 	// is: an accountability record nobody can read is not accountability.
 	mux.Handle("GET /v1/quarantines", Chain(http.HandlerFunc(s.listQuarantines), CaptureBody))
 	mux.Handle("GET /v1/cases/{id}", Chain(http.HandlerFunc(s.getCase), CaptureBody))
 	mux.Handle("GET /v1/governance/proposals", Chain(http.HandlerFunc(s.listProposals), CaptureBody))
+
+	// What an independent verifier needs, and nothing it has to trust us for
+	// (§5.1). The DID document resolves the key ids an attestation names; the
+	// checkpoint and the anchors let a receipt be checked without asking the log
+	// whether its own receipt is genuine.
+	mux.Handle("GET /v1/agents/{id}/did.json", Chain(http.HandlerFunc(s.didDocument), CaptureBody))
+	mux.Handle("GET /v1/log/checkpoint", Chain(http.HandlerFunc(s.latestCheckpoint), CaptureBody))
+	mux.Handle("GET /v1/trust-anchors", Chain(http.HandlerFunc(s.trustAnchors), CaptureBody))
 
 	// Public and unauthenticated by design: verification must survive being
 	// linked from a public page.

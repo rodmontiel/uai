@@ -196,6 +196,30 @@ type SigningPayloadCase struct {
 	MustVerify bool            `json:"must_verify"`
 }
 
+// VoteAssertionCase covers a delegate's WebAuthn assertion over a vote digest
+// (§16.1).
+//
+// The challenge IS the vote digest, so the hardware signature covers the voted
+// content rather than a session. These vectors let an independent implementation
+// check that it computes the same digest from the same statement and accepts or
+// refuses the same assertions — which is what recomputing a tally requires.
+type VoteAssertionCase struct {
+	Name string `json:"name"`
+	// Statement is the vote content the digest is taken over.
+	Statement json.RawMessage `json:"statement"`
+	// VoteDigest is the challenge: SHA-256("UAI-v1:vote" || 0x00 || jcs(statement)).
+	VoteDigest        string          `json:"vote_digest"`
+	AuthenticatorData string          `json:"authenticator_data_b64url"`
+	ClientDataJSON    string          `json:"client_data_json_b64url"`
+	Signature         string          `json:"signature_b64url"`
+	PublicKeyJWK      json.RawMessage `json:"public_key_jwk"`
+	RelyingPartyID    string          `json:"relying_party_id"`
+	Origin            string          `json:"origin"`
+	UserVerified      bool            `json:"user_verified"`
+	MustVerify        bool            `json:"must_verify"`
+	FailureReason     string          `json:"failure_reason,omitempty"`
+}
+
 // Root returns the repository root, located relative to this source file so
 // that tests work regardless of the package they run from.
 func Root() string {

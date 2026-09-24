@@ -12,22 +12,22 @@
     "HIGH",
     "CRITICAL"
   ],
-  "bundle_hash": "sha256:88d12542e7a7c4fdcb452ffc93fcac204fa6d6cf0b480397cb6d0a9f0aca5b74",
+  "bundle_hash": "sha256:fa51bb4c1632ed3324e45f915189571a8e09ef1b681e603530f95e3b5ec0445d",
   "approval_signatures": [
     {
       "signer": "did:web:council.uai.world#gasc-1",
       "alg": "EdDSA",
-      "value": "pZKqeGq2IpPw9xjgFJW-apG3sKuk8hpxkXva8SdR7zxuB7F8hb3JE1d04gjAQVRzOvsR7Tgj79OkWZ3RlUkRAw"
+      "value": "UzajhcwbpA10bN53K_P9uzVJRNOJwnvsCufDocsWyOWVOJpkZ23fSjFuErra1X2wIXFmlUmkLQP_kxaDAUffDw"
     },
     {
       "signer": "did:web:council.uai.world#gasc-2",
       "alg": "EdDSA",
-      "value": "h71YFxCMj7fzo7Poy62hL6V1FSF4PsjkZFHJ8-9knJviyqZnclE_Tb92TxvJykQZtgcrpVm7nttMejDjIkhWDg"
+      "value": "nMhkfwU7dXrl3JzfZptNQ7kCcMyJxwJwt_ASHRkhQREiXofVOyYIfi3sAmJWvrQc4Zei07Tv4wvY4yutKpz8Bg"
     },
     {
       "signer": "did:web:council.uai.world#gasc-3",
       "alg": "EdDSA",
-      "value": "248WIEolYlyegxzpaefGIXdb5y5HpAt8XgYNfZ3gIO0h_6azOtSlZq6KEusFBTRUc2gKAsBNlC-tuvIu0ijeCA"
+      "value": "_b1uaDIzZ67-otXx9OKxcTQ1QPgcVZMXK70OoWFH4FnhgsoQMle6sPTetVhQZHFZ9WBcgp6QxxkL96JWmNLHBA"
     }
   ],
   "threshold": "3-of-5"

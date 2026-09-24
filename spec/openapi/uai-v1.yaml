@@ -611,12 +611,21 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/QuarantineOrder' }
 
-  /governance/cases/{id}/vote:
+  /governance/proposals/{id}/vote:
     post:
       tags: [governance]
       operationId: castVote
       summary: Cast a signed human vote
       description: |
+        Against a PROPOSAL, not a case: a case may carry more than one proposal — a
+        revocation, a capability restriction, a clearance — and a vote addressed to the case
+        would be ambiguous the first time it does.
+
+        The proposal stays open until every eligible delegate has answered or the window
+        closes. Authorizing on the vote that first meets the threshold would refuse the
+        delegates who had not answered, which in practice means erasing the dissent from the
+        record.
+
         The WebAuthn challenge IS the digest of the vote statement, so the hardware assertion
         covers the voted content and not merely the session. A compromised frontend cannot
         alter a vote without invalidating the assertion.
@@ -627,7 +636,8 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: string, pattern: '^UAI-INC-[0-9]{6}$' }
+          description: Proposal id (ULID)
+          schema: { type: string }
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -681,6 +691,125 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
       security:
         - webAuthn: []
+
+  /governance/proposals/{id}:
+    get:
+      tags: [governance]
+      operationId: getProposal
+      summary: A proposal with its recomputed tally
+      description: |
+        The tally is recomputed from the signed assertions on every read, never returned from
+        a stored counter. A counter is a number somebody can write; this is a function of the
+        statements, and each one is re-verified against its delegate's registered credential
+        before it counts.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Proposal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposal_id: { type: string }
+                  case_id: { type: string }
+                  kind: { type: string }
+                  subject: { type: string }
+                  state: { enum: [DRAFT, VOTING, AUTHORIZED, REJECTED, EXPIRED] }
+                  evidence_digest: { type: string }
+                  policy: { type: object }
+                  tally: { type: object }
+                  authorized: { type: boolean }
+                  reason: { type: string }
+                  note: { type: string }
+
+  /revocations/{decisionId}:
+    get:
+      tags: [governance]
+      operationId: getRevocationDecision
+      summary: A revocation decision with the signed votes behind it
+      description: |
+        Carries every vote, so an independent party can recount the tally and rebuild the
+        governance proof rather than take the recorded outcome on trust. That recomputation
+        is what `uai-verify` runs, and a decision whose stated outcome does not follow from
+        its own votes is the only forgery this design leaves room for.
+      security: []
+      parameters:
+        - name: decisionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Decision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision_id: { type: string }
+                  case_id: { type: string }
+                  subject_agent_did: { type: string }
+                  proposal: { type: string }
+                  policy: { type: object }
+                  evidence_digest: { type: string }
+                  tally: { type: object }
+                  votes: { type: array, items: { type: object } }
+                  governance_proof: { type: string }
+                  status: { enum: [AUTHORIZED, EXECUTED] }
+
+  /agents/{id}/did.json:
+    get:
+      tags: [identity]
+      operationId: getDIDDocument
+      summary: An agent's DID Document
+      description: |
+        Every key the agent has ever used, with the window it was valid in. The windows are
+        what lets a verifier check a two-year-old attestation: verifying a historical
+        signature against the current key set silently invalidates history on every rotation.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: DID Document
+          content:
+            application/json:
+              schema: { type: object }
+
+  /trust-anchors:
+    get:
+      tags: [verification]
+      operationId: getTrustAnchors
+      summary: The roots a verifier needs (5.1)
+      description: |
+        Public keys only. Everything else this API serves is checkable against them, and none
+        of it has to be trusted.
+
+        Fetching these from the party being audited proves internal consistency, not
+        authenticity: a dishonest gateway can hand out keys that make its own forgeries
+        verify. Pin them out of band.
+      security: []
+      responses:
+        '200':
+          description: Trust anchors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credential_issuer: { type: object }
+                  policy: { type: object }
+                  transparency_log: { type: object }
+                  note: { type: string }
 
   /verify/{uaiId}:
     get:

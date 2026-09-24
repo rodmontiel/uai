@@ -562,3 +562,34 @@ func TestAttestationGetsATransparencyReceipt(t *testing.T) {
 		t.Errorf("%d receipts stored for %s, want 1", stored, a.EventID)
 	}
 }
+
+// getJSON performs an unauthenticated GET and decodes the body.
+func (e *env) getJSON(t *testing.T, path string, out any) int {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "http://api.uai.test"+path, nil)
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, req)
+	if out != nil && rec.Code == http.StatusOK {
+		if err := json.Unmarshal(rec.Body.Bytes(), out); err != nil {
+			t.Fatalf("%s: %v\n%s", path, err, rec.Body)
+		}
+	}
+	return rec.Code
+}
+
+// postJSON performs an unsigned POST and returns the response, so a test can
+// assert on a refusal rather than only on a success.
+func (e *env) postJSON(t *testing.T, path string, body any) *http.Response {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://api.uai.test"+path,
+		strings.NewReader(string(raw)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "test-"+nonce())
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, req)
+	return rec.Result()
+}

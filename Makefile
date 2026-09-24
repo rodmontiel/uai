@@ -162,6 +162,61 @@ run-ledger-writer: ## Drain the anchor queue once against a local EVM
 	$(GO) run ./services/ledger-writer -dsn "$(PG_DSN)" -once \
 		-rpc "$(UAI_CHAIN_RPC)" -from "$(UAI_CHAIN_FROM)" -anchor-contract "$(UAI_ANCHOR_CONTRACT)"
 
+## ---------- the demo ----------
+DEMO_PORT ?= 8088
+DEMO_DSN  ?= postgres://uai:uai@localhost:55466/uai?sslmode=disable
+DEMO_KEYS ?= .keys/demo
+
+.PHONY: demo
+demo: ## Run the ACME scenario end to end and check all 21 MVP criteria
+	@$(MAKE) --no-print-directory demo-up
+	@trap '$(MAKE) --no-print-directory demo-down' EXIT; \
+		$(GO) build -o $(DEMO_KEYS)/uai-verify ./tools/uai-verify && \
+		PG_DSN="$(DEMO_DSN)" UAI_VERIFY="$(PWD)/$(DEMO_KEYS)/uai-verify" \
+			python3 demo/demo.py --endpoint http://127.0.0.1:$(DEMO_PORT) --dsn "$(DEMO_DSN)" \
+				--keys $(DEMO_KEYS)
+
+# A throwaway stack, torn down afterwards. The demo must not depend on state a
+# previous run left behind: a scenario that only works the second time is a
+# scenario nobody else can reproduce.
+.PHONY: demo-up
+demo-up:
+	@$(CONTAINER) rm -f uai-pg-demo >/dev/null 2>&1 || true
+	@$(CONTAINER) run -d --name uai-pg-demo -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
+		-e POSTGRES_DB=uai -p 127.0.0.1:55466:5432 $(PG_IMAGE) >/dev/null
+	@for i in $$(seq 1 60); do \
+		$(CONTAINER) exec uai-pg-demo psql -U uai -d uai -qtAc 'select 1' >/dev/null 2>&1 \
+			&& break; sleep 1; done
+	@for f in $$(ls db/migrations/*.up.sql db/seed/*.up.sql | sort); do \
+		$(CONTAINER) exec -i uai-pg-demo psql -U uai -d uai -v ON_ERROR_STOP=1 -q < $$f || exit 1; \
+	done
+	@# Anything already on the port is a previous run that did not clean up. It
+	@# is killed rather than worked around: a demo that silently talks to a
+	@# stale gateway pointed at a deleted database reports whatever that
+	@# gateway happens to say, which is the least reproducible failure there is.
+	@stale=$$(ss -ltnp 2>/dev/null | grep ":$(DEMO_PORT) " | grep -oP 'pid=\K[0-9]+' | head -1); \
+		if [ -n "$$stale" ]; then echo "stopping a previous demo gateway (pid $$stale)"; \
+		kill $$stale 2>/dev/null || true; sleep 1; fi
+	@if ss -ltn 2>/dev/null | grep -q ":$(DEMO_PORT) "; then \
+		echo "port $(DEMO_PORT) is in use by something this target did not start."; \
+		echo "Stop it, or run: make demo DEMO_PORT=<free port>"; exit 1; fi
+	@mkdir -p $(DEMO_KEYS) && chmod 700 $(DEMO_KEYS)
+	@test -f $(DEMO_KEYS)/issuer.jwk || \
+		$(GO) run ./tools/uai-keygen -out $(DEMO_KEYS)/issuer.jwk -did "$(ISSUER_DID)" >/dev/null
+	@PG_DSN="$(DEMO_DSN)" $(GO) run ./services/gateway -addr 127.0.0.1:$(DEMO_PORT) \
+		-scheme http -issuer-key $(DEMO_KEYS)/issuer.jwk > $(DEMO_KEYS)/gateway.log 2>&1 & \
+		echo $$! > $(DEMO_KEYS)/gateway.pid
+	@for i in $$(seq 1 40); do \
+		curl -sf http://127.0.0.1:$(DEMO_PORT)/v1/quarantines >/dev/null 2>&1 && break; sleep 1; done
+	@curl -sf http://127.0.0.1:$(DEMO_PORT)/v1/quarantines >/dev/null 2>&1 || { \
+		echo "the gateway did not come up:"; tail -5 $(DEMO_KEYS)/gateway.log; exit 1; }
+
+.PHONY: demo-down
+demo-down:
+	@test -f $(DEMO_KEYS)/gateway.pid && kill $$(cat $(DEMO_KEYS)/gateway.pid) 2>/dev/null || true
+	@rm -f $(DEMO_KEYS)/gateway.pid
+	@$(CONTAINER) rm -f uai-pg-demo >/dev/null 2>&1 || true
+
 .PHONY: build
 build: ## Build everything
 	$(GO) build ./...
@@ -224,8 +279,11 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 	@$(CONTAINER) rm -f uai-pg-test >/dev/null 2>&1 || true
 	@$(CONTAINER) run -d --name uai-pg-test -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
 		-e POSTGRES_DB=uai -p 127.0.0.1:55433:5432 $(PG_IMAGE) >/dev/null
-	@for i in $$(seq 1 40); do \
-		$(CONTAINER) exec uai-pg-test pg_isready -U uai >/dev/null 2>&1 && break; sleep 1; done
+	@# A real query, not pg_isready: postgres restarts itself during first-time
+	@# initialisation, so pg_isready can say yes to a server about to shut down.
+	@for i in $$(seq 1 60); do \
+		$(CONTAINER) exec uai-pg-test psql -U uai -d uai -qtAc 'select 1' >/dev/null 2>&1 \
+			&& break; sleep 1; done
 	@# Every migration, in order, discovered rather than listed: a hardcoded list
 	@# means a new migration is silently untested the day it is added.
 	@for f in $$(ls db/migrations/*.up.sql db/seed/*.up.sql | sort); do \

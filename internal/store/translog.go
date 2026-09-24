@@ -261,3 +261,44 @@ func (db *DB) RecordLedgerCommitment(ctx context.Context, c LedgerCommitment) er
 		nullable(c.SubjectID), c.AnchoredAt)
 	return classify(err)
 }
+
+// StoredReceipt is a receipt as persisted, with everything a verifier needs to
+// re-check inclusion without asking the log anything.
+type StoredReceipt struct {
+	ID                string
+	Origin            string
+	LogIndex          int64
+	LeafHash          string
+	SubjectKind       string
+	SubjectID         string
+	CheckpointSize    int64
+	CheckpointRoot    string
+	InclusionProof    json.RawMessage
+	LogSignature      string
+	WitnessSignatures json.RawMessage
+	IssuedAt          time.Time
+}
+
+// ReceiptBySubject returns the receipt issued for one statement.
+//
+// Served publicly, because §18.1's promise is that a party holding the statement
+// and the receipt needs nothing from us. A receipt only the log can fetch would
+// make that promise conditional on the log being up and honest, which is the
+// dependency the receipt exists to remove.
+func (db *DB) ReceiptBySubject(ctx context.Context, origin, kind, subjectID string) (StoredReceipt, error) {
+	var r StoredReceipt
+	err := db.pool.QueryRow(ctx, `
+		SELECT id, log_origin, log_index, leaf_hash, subject_kind, subject_id,
+		       checkpoint_size, checkpoint_root, inclusion_proof, log_signature,
+		       witness_signatures, issued_at
+		  FROM transparency_receipts
+		 WHERE log_origin = $1 AND subject_kind = $2 AND subject_id = $3
+		 ORDER BY checkpoint_size DESC LIMIT 1`, origin, kind, subjectID).
+		Scan(&r.ID, &r.Origin, &r.LogIndex, &r.LeafHash, &r.SubjectKind, &r.SubjectID,
+			&r.CheckpointSize, &r.CheckpointRoot, &r.InclusionProof, &r.LogSignature,
+			&r.WitnessSignatures, &r.IssuedAt)
+	if err != nil {
+		return StoredReceipt{}, classify(err)
+	}
+	return r, nil
+}

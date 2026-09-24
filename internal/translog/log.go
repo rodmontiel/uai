@@ -204,3 +204,44 @@ func (l *Log) TrustAnchors() receipt.TrustAnchors {
 	}
 	return anchors
 }
+
+// SignedCheckpoint is a checkpoint with everything needed to check it.
+//
+// The signature travels with it, always. A checkpoint on its own is the log's
+// word about its own contents, and a verifier comparing a receipt against an
+// unverified checkpoint is asking the log whether its own receipt is genuine.
+type SignedCheckpoint struct {
+	receipt.Checkpoint
+	LogSignature      uaicrypto.Signature        `json:"log_signature"`
+	WitnessSignatures []receipt.WitnessSignature `json:"witness_signatures"`
+	MinWitnesses      int                        `json:"min_witnesses"`
+}
+
+// Checkpoint issues a signed checkpoint over the log as it stands, with witness
+// co-signatures.
+//
+// Issued fresh rather than read back from storage, so that a caller asking "what
+// does this log say right now" gets an answer covering everything appended so
+// far. The persisted checkpoints remain the record of what was published at each
+// size; this is the current view, and the two must agree at any size they share
+// or the log has forked.
+func (l *Log) Checkpoint(ctx context.Context, at time.Time) (SignedCheckpoint, error) {
+	l.mu.Lock()
+	size := l.tree.Size()
+	if size == 0 {
+		l.mu.Unlock()
+		return SignedCheckpoint{}, fmt.Errorf("translog: log %s is empty", l.origin)
+	}
+	r, err := receipt.Issue(l.signer, l.origin, l.tree, size-1, at)
+	l.mu.Unlock()
+	if err != nil {
+		return SignedCheckpoint{}, err
+	}
+	if err := l.witness(&r); err != nil {
+		return SignedCheckpoint{}, err
+	}
+	return SignedCheckpoint{
+		Checkpoint: r.Checkpoint, LogSignature: r.LogSignature,
+		WitnessSignatures: r.WitnessSignatures, MinWitnesses: l.minWit,
+	}, nil
+}

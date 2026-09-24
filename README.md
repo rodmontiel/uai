@@ -51,15 +51,16 @@ when its own stated deliverable exists in this repository.
 | Phase | Status | What |
 |---|---|---|
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
-| 2 Protocol | ✅ | 10 JSON Schemas with 41 examples, 3 JSON-LD contexts, OpenAPI 3.1 (24 paths), 12 published vector sets, `uai-conformance` |
-| 3 Data | ✅ | PostgreSQL schema, 36 tables, integrity guards, 83 executable invariant assertions |
+| 2 Protocol | ✅ | 10 JSON Schemas with 41 examples, 3 JSON-LD contexts, OpenAPI 3.1 (28 paths), 13 published vector sets, `uai-conformance` |
+| 3 Data | ✅ | PostgreSQL schema, 36 tables, integrity guards, 86 executable invariant assertions |
 | 4 Backend core | ✅ | `internal/store`, `internal/api`, `services/gateway`. Register → bind → attest runs as a test, not a claim |
 | 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` |
 | 6 Policy engine | ✅ | `pkg/policy` (dependency-free bundle verification), `internal/pdp` (embedded OPA), the 3-of-5 signed GASC bundle, signed decision records |
 | 7 Blockchain | ✅ | 7 contracts with Foundry fuzzing, `internal/translog` (log, SCITT receipts, witness co-signing), `internal/chain`, `services/ledger-writer` |
 | 8 Frontend | ✅ | Six surfaces in `web/`, one origin with a strict CSP, and a verify page that verifies in the browser rather than rendering our verdict |
 | 9 SDK | ✅ | `sdk/go`, `sdk/python`, `sdk/typescript`, `mcp/` with the 8 tools of §22.9 |
-| 10–12 | ⬜ | Demo, security validation, deployment |
+| 10 Demo | ✅ | `make demo` runs the ACME scenario and fails unless all 21 MVP criteria are demonstrated; `tools/uai-verify` re-checks the history from public data alone |
+| 11–12 | ⬜ | Security validation, deployment |
 
 Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
 anything else could be built. Phase 2 has since closed that gap: the crypto core is checked
@@ -71,7 +72,7 @@ whether evidence is genuine, and every dependency there is supply-chain surface.
 that rule rather than leaving it to discipline.
 
 ```bash
-make conformance     # 157 checks: vectors, schemas, OpenAPI
+make conformance     # 161 checks: vectors, schemas, OpenAPI
 make vectors-check   # fails if regenerating the vectors would change them
 ```
 
@@ -328,6 +329,57 @@ of removing it — emitting four empty strings into the signed bytes that no rea
 would know to add. And `POST /v1/policy/evaluate` took the agent's passport **from the request
 body**: sending `{"passport":{"state":"VALID","allowed_jurisdictions":["KP"]}}` turned a `DENY`
 into an `ALLOW`. Both now have committed vectors or negative tests; the second has both.
+
+### The demo shows what the system does not do
+
+```bash
+make demo        # the ACME scenario; fails unless all 21 MVP criteria are demonstrated
+```
+
+An agent is registered, bound, passported and working. It reaches for infrastructure it was
+never authorized for. The guardrail denies it, a signed suspicion is filed, and **the policy —
+not the script — decides** that the category warrants a preventive quarantine. A case opens.
+Five delegates on three continents vote with hardware authenticators. Four say yes. An
+administrator whose entire write surface is one button executes the decision; their only input
+is a decision id, and everything else was fixed by the governance proof before they arrived.
+
+Then the script runs the agent's business logic directly. **It still works.** Nothing stopped
+the code from executing, because nothing in UAI can. What changed is that no participant will
+honour its identity — and the demo says that at the moment it is least convenient to say it,
+because a system that lets people believe otherwise has sold them a kill switch it does not
+have.
+
+### A decision does not close before everyone has spoken
+
+The proposal used to authorize on the vote that first met the threshold. That refused every
+delegate who had not answered yet — which in practice means refusing the dissent, since the
+threshold is reached by the majority. The record then showed 4–0 where the council voted 4–1.
+
+A decision whose record cannot show who objected is weaker, not stronger. So authorization
+waits for the vote to actually finish, measured against the threshold **snapshotted when the
+proposal opened** — a live count would let appointing a delegate mid-vote move the finish line.
+
+Four YES votes from one country still fail: `min_countries` is a separate condition, because
+M-of-N alone is satisfiable inside a single jurisdiction, and a revocation decided there is a
+national decision wearing an international label.
+
+### Criterion 21: verification without us
+
+```bash
+uai-verify -anchors anchors.json uai:agent:01JY8R9ZAF392N7QX2T81JH6KM
+```
+
+It fetches nothing but public data and trusts only the three anchors of
+[§5.1](docs/protocol/02-actors-trust.md): the policy signing keys, the log and witness keys, and
+the ledger validator set. Everything the registry returns is checked against them — including
+the registry's own verdict, which the tool **recomputes rather than prints**.
+
+For a revoked identity it rebuilds the tally and the governance proof from the signed
+assertions. A decision whose stated outcome does not follow from its own votes is the only
+forgery this design leaves room for, and that is the check that catches it.
+
+If you let it fetch the anchors from the gateway it is auditing, it says so in the output:
+that run proves internal consistency, not authenticity.
 
 ## Design priorities
 

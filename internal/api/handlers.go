@@ -167,7 +167,26 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 		WriteStoreError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, identityCard(agent))
+	card := identityCard(agent)
+	// A revoked identity names the decision that revoked it. Without this, an
+	// independent verifier reading REVOKED has nothing to check: "revoked" with
+	// no decision to recompute is exactly the state an operator acting alone
+	// would produce, and it must not be indistinguishable from a governance
+	// outcome (§16.3).
+	if agent.Status == "REVOKED" {
+		if rev, err := s.db.RevocationForAgent(r.Context(), agent.ID); err == nil {
+			card["revocation"] = map[string]any{
+				"decision_id":      rev.DecisionID,
+				"case_id":          rev.CaseID,
+				"governance_proof": rev.GovernanceProof,
+				"executed_at":      rev.ExecutedAt.UTC().Format(time.RFC3339),
+				"tx_hash":          rev.TxHash,
+				"note": "Recompute it: GET /v1/revocations/" + rev.DecisionID + " carries the " +
+					"signed votes, and the tally and proof rebuild from them.",
+			}
+		}
+	}
+	WriteJSON(w, http.StatusOK, card)
 }
 
 // getEvents returns an agent's event chain.
@@ -218,13 +237,34 @@ func (s *Server) getAction(w http.ResponseWriter, r *http.Request) {
 		WriteStoreError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"event_id":            ev.ID,
 		"sequence":            ev.Sequence,
 		"event_hash":          ev.EventHash,
 		"previous_event_hash": ev.PreviousEventHash,
 		"attestation":         json.RawMessage(att.Payload),
-	})
+	}
+	// The receipt travels with the statement, always. §18.1's promise is that a
+	// party holding both needs nothing from us; serving them from two places
+	// would make a verifier fetch twice and, more to the point, would let one
+	// be available when the other is not.
+	if s.translog != nil {
+		if r, err := s.db.ReceiptBySubject(r.Context(), s.translog.Origin(),
+			translog.KindAttestation, ev.ID); err == nil {
+			out["receipt"] = map[string]any{
+				"log_origin": r.Origin, "log_index": r.LogIndex, "leaf_hash": r.LeafHash,
+				"checkpoint_size": r.CheckpointSize, "checkpoint_root": r.CheckpointRoot,
+				"inclusion_proof": r.InclusionProof, "log_signature": r.LogSignature,
+				"witness_signatures": r.WitnessSignatures, "issued_at": r.IssuedAt.UTC(),
+			}
+		} else {
+			// Said rather than omitted. A missing key would read as "no receipt
+			// was asked for"; this says the action is recorded and unlogged,
+			// which is a different and checkable fact.
+			out["transparency"] = "UNLOGGED"
+		}
+	}
+	WriteJSON(w, http.StatusOK, out)
 }
 
 // verify is the universal, unauthenticated verification endpoint.

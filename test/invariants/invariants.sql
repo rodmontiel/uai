@@ -90,7 +90,8 @@ VALUES ('acc-1', 'evi-1', 'did:uai:delegate:01JY8R9ZC00000000000000000', 'INVEST
 
 INSERT INTO country_members (code, did, display_name, credential_hash) VALUES
     ('AR', 'did:web:ar.gov.example', 'Argentina', 'sha256:' || repeat('d', 64)),
-    ('DE', 'did:web:de.gov.example', 'Germany',   'sha256:' || repeat('d', 64));
+    ('DE', 'did:web:de.gov.example', 'Germany',   'sha256:' || repeat('d', 64))
+ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO human_delegates (id, uai_id, did, country_code, display_name,
                              webauthn_credential_id, webauthn_public_key, credential_hash)
@@ -705,5 +706,46 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RAISE EXCEPTION 'FAIL  T-11  the owner could not grant a capability: %', SQLERRM;
 END $$;
+
+-- ── governance: one decision, one execution ─────────────────────────────────
+--
+-- The vote rules are asserted under INV-004 and INV-005 above; these cover the
+-- step after the vote, which nothing else did.
+
+SELECT assert_fails('QUAR', 'a review date cannot fall after the expiry', $$
+    INSERT INTO quarantine_orders (id, agent_id, owner_id, reason_category, reason_text,
+                                   policy_version, bundle_hash, initiating_rule,
+                                   issued_at, review_by, expires_at, signature, signer_kid)
+    VALUES ('q-late-review', 'ag-1', 'own-1', 'UNAUTHORIZED_ACCESS', 'test',
+            'GASC-2027.4', 'sha256:' || repeat('1', 64), 'gasc.harm.unauthorized_access',
+            now(), now() + interval '9 days', now() + interval '7 days', 'sig', 'kid')$$);
+
+INSERT INTO revocation_decisions (id, proposal_id, case_id, subject_agent_id, tally_yes,
+                                  tally_no, tally_pending, threshold_applied, evidence_digest,
+                                  governance_proof)
+VALUES ('dec-1', 'prop-1', 'UAI-INC-000041', 'ag-1', 4, 1, 0, '4-of-5',
+        'sha256:' || repeat('e', 64), 'sha256:' || repeat('9', 64));
+
+INSERT INTO revocations (id, decision_id, agent_id, executed_by_did, executor_signature,
+                         governance_proof)
+VALUES ('rev-1', 'dec-1', 'ag-1', 'did:uai:owner:01JY8R9ZB00000000000000000', 'sig',
+        'sha256:' || repeat('9', 64));
+
+-- A second on-chain event for one decision would leave a reader of the chain
+-- guessing which one counted.
+SELECT assert_fails('GOV', 'one decision cannot be executed twice', $$
+    INSERT INTO revocations (id, decision_id, agent_id, executed_by_did, executor_signature,
+                             governance_proof)
+    VALUES ('rev-2', 'dec-1', 'ag-1', 'did:uai:owner:01JY8R9ZB00000000000000000', 'sig',
+            'sha256:' || repeat('9', 64))$$);
+
+-- The proof is what the contract verifies. One proof authorizing two decisions
+-- would let a second agent be revoked on the first one's votes.
+SELECT assert_fails('GOV', 'one governance proof cannot authorize two decisions', $$
+    INSERT INTO revocation_decisions (id, proposal_id, case_id, subject_agent_id, tally_yes,
+                                      tally_no, tally_pending, threshold_applied,
+                                      evidence_digest, governance_proof)
+    VALUES ('dec-2', 'prop-1', 'UAI-INC-000041', 'ag-1', 4, 1, 0, '4-of-5',
+            'sha256:' || repeat('e', 64), 'sha256:' || repeat('9', 64))$$);
 
 ROLLBACK;

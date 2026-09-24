@@ -51,9 +51,14 @@ var knownEffects = map[string]bool{
 
 // Bundle is a loaded, verified policy bundle ready to evaluate.
 type Bundle struct {
-	Manifest policy.Manifest
-	query    rego.PreparedEvalQuery
-	loadedAt time.Time
+	Manifest  policy.Manifest
+	query     rego.PreparedEvalQuery
+	harmQuery rego.PreparedEvalQuery
+	// threshold and minCountries come from the bundle, so a quorum changes when
+	// someone signs rather than when someone deploys.
+	threshold    string
+	minCountries int
+	loadedAt     time.Time
 }
 
 // Version is the "GASC-2027.4" form recorded on every decision.
@@ -122,15 +127,138 @@ func Load(ctx context.Context, fsys fs.FS, authority policy.Authority, at time.T
 		return nil, fmt.Errorf("pdp: bundle carries no rego modules")
 	}
 
-	opts := []func(*rego.Rego){rego.Query(Query), rego.Store(inmem.NewFromObject(data))}
-	for name, src := range modules {
-		opts = append(opts, rego.Module(name, src))
+	store := inmem.NewFromObject(data)
+	compile := func(query string) (rego.PreparedEvalQuery, error) {
+		opts := []func(*rego.Rego){rego.Query(query), rego.Store(store)}
+		for name, src := range modules {
+			opts = append(opts, rego.Module(name, src))
+		}
+		return rego.New(opts...).PrepareForEval(ctx)
 	}
-	prepared, err := rego.New(opts...).PrepareForEval(ctx)
+	prepared, err := compile(Query)
 	if err != nil {
 		return nil, fmt.Errorf("pdp: compile bundle %s: %w", manifest.Version(), err)
 	}
-	return &Bundle{Manifest: manifest, query: prepared, loadedAt: time.Now()}, nil
+	// A second prepared query for the harm rules alone.
+	//
+	// The harm monitor asks a different question from the action PDP: "does
+	// this reported harm warrant a quarantine", not "may this action proceed".
+	// Running it through the full aggregator would mix in capability and
+	// jurisdiction findings about an action nobody is proposing, and the
+	// strictest-wins rule would then hide the harm answer behind them.
+	harm, err := compile(HarmQuery)
+	if err != nil {
+		return nil, fmt.Errorf("pdp: compile harm rules of %s: %w", manifest.Version(), err)
+	}
+	// The governance parameters come from the bundle, never from code: §16
+	// says the threshold is policy, and a quorum compiled into a service is a
+	// quorum that changes when someone deploys rather than when someone signs.
+	gov, err := compile(GovernanceQuery)
+	if err != nil {
+		return nil, fmt.Errorf("pdp: compile governance rules of %s: %w", manifest.Version(), err)
+	}
+	b := &Bundle{Manifest: manifest, query: prepared, harmQuery: harm, loadedAt: time.Now()}
+	if err := b.loadGovernance(ctx, gov); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// HarmQuery asks only the harm taxonomy rules.
+const HarmQuery = "data.gasc.harm.findings"
+
+// GovernanceQuery asks for the governance parameters.
+const GovernanceQuery = "data.gasc.governance"
+
+// loadGovernance reads the threshold and country minimum out of the bundle.
+func (b *Bundle) loadGovernance(ctx context.Context, q rego.PreparedEvalQuery) error {
+	results, err := q.Eval(ctx)
+	if err != nil || len(results) == 0 || len(results[0].Expressions) == 0 {
+		return fmt.Errorf("pdp: bundle %s states no governance parameters: %w",
+			b.Manifest.Version(), err)
+	}
+	doc, ok := results[0].Expressions[0].Value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("pdp: bundle %s governance parameters are not an object",
+			b.Manifest.Version())
+	}
+	threshold, _ := doc["threshold"].(string)
+	countries, _ := doc["min_countries"].(json.Number)
+	if threshold == "" {
+		return fmt.Errorf("pdp: bundle %s states no revocation threshold", b.Manifest.Version())
+	}
+	b.threshold = threshold
+	if n, err := countries.Int64(); err == nil {
+		b.minCountries = int(n)
+	}
+	return nil
+}
+
+// Threshold is the revocation threshold this bundle sets, as "M-of-N".
+func (b *Bundle) Threshold() string { return b.threshold }
+
+// MinCountries is the jurisdictional spread a revocation needs.
+func (b *Bundle) MinCountries() int { return b.minCountries }
+
+// HarmEffect returns the strictest effect the harm taxonomy assigns to a set of
+// reported categories, or "" when none of them crosses its threshold.
+//
+// The thresholds live in the signed bundle, so "is this bad enough to quarantine
+// an agent" is answered by policy that five parties approved, not by a constant
+// in a service.
+func (b *Bundle) HarmEffect(ctx context.Context, assessment []map[string]any) (string, string, error) {
+	if b.harmQuery.Modules() == nil && len(assessment) == 0 {
+		return "", "", nil
+	}
+	results, err := b.harmQuery.Eval(ctx, rego.EvalInput(map[string]any{
+		"harm_assessment": assessment,
+	}))
+	if err != nil {
+		return "DENY", "harm_evaluation_failed", fmt.Errorf("pdp: harm: %w", err)
+	}
+	if len(results) == 0 || len(results[0].Expressions) == 0 {
+		return "", "", nil
+	}
+	raw, ok := results[0].Expressions[0].Value.([]any)
+	if !ok {
+		return "", "", nil
+	}
+	// Two different questions share one vocabulary, and they order it
+	// differently.
+	//
+	// The action PDP asks "may this proceed", and there DENY is strictest: the
+	// action does not happen. The harm monitor asks "what response does this
+	// warrant", and there QUARANTINE is stronger than DENY — denying one action
+	// is narrower than restricting the agent that attempted it.
+	//
+	// Ranking them on one scale is how a SAFETY_SYSTEM_BYPASS finding gets
+	// buried under an UNAUTHORIZED_ACCESS DENY from the same report, which is
+	// exactly backwards: the category the policy singles out as the highest
+	// signal it can observe would be the one that stops mattering as soon as
+	// anything else is also wrong.
+	rank := map[string]int{
+		"ALLOW": 0, "ALLOW_WITH_MONITORING": 1, "REQUIRE_HUMAN_APPROVAL": 2, "DENY": 3,
+	}
+	worst, reason := "", ""
+	for _, item := range raw {
+		finding, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		effect, _ := finding["effect"].(string)
+		// A response category, not a point on the permissiveness scale: any
+		// finding that calls for quarantine decides the answer, whatever else
+		// the report also says.
+		if effect == "QUARANTINE" {
+			reason, _ = finding["reason"].(string)
+			return "QUARANTINE", reason, nil
+		}
+		if worst == "" || rank[effect] > rank[worst] {
+			worst = effect
+			reason, _ = finding["reason"].(string)
+		}
+	}
+	return worst, reason, nil
 }
 
 // Evaluate runs one request against the bundle.

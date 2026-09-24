@@ -21,3 +21,11 @@ quorum_met(proposal) if {
 	count(votes) >= data.taxonomy.governance.revocation_quorum
 	count({v.delegate.country | some v in votes}) >= data.taxonomy.governance.min_countries
 }
+
+# The threshold as a string, so a service reads it from the bundle rather than
+# composing "4-of-5" from two numbers. Two places that build the same string are
+# two places that can disagree about it, and this one ends up inside a
+# governance proof that a contract checks.
+threshold := data.taxonomy.governance.revocation_threshold
+
+min_countries := data.taxonomy.governance.min_countries

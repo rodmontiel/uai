@@ -30,6 +30,7 @@ import (
 
 	"github.com/rodmontiel/uai/internal/testvectors"
 	"github.com/rodmontiel/uai/pkg/attest"
+	"github.com/rodmontiel/uai/pkg/governance"
 	"github.com/rodmontiel/uai/pkg/merkle"
 	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
@@ -88,6 +89,7 @@ func main() {
 		{"identifier/uai-id.json", identifierVectors},
 		{"attestation/event-chain.json", chainVectors},
 		{"attestation/signing-payload.json", signingPayloadVectors},
+		{"governance/vote-assertion.json", voteAssertionVectors},
 		{"pop/rfc9421.json", popVectors},
 	}
 
@@ -917,6 +919,148 @@ func signingPayloadVectors() (any, error) {
 		Domain:  string(uaicrypto.DomainAttestation),
 		SeedHex: hex.EncodeToString(seed), PublicHex: hex.EncodeToString(pub),
 		Signature: signed.Signature.Value, MustVerify: false,
+	})
+	return set, nil
+}
+
+// voteAssertionVectors pins a delegate's WebAuthn assertion over a vote digest.
+//
+// Ed25519 (COSE alg -8), not ES256, for one reason: ECDSA signing is
+// randomized, so an ES256 vector could pin a signature to VERIFY but never one
+// an implementation could reproduce by signing. Ed25519 is deterministic, so
+// these vectors check both directions. ES256 is equally accepted by
+// pkg/webauthn and is covered by that package's own tests.
+//
+// §16.1's whole design is here: the challenge in clientDataJSON is the vote
+// digest, so the hardware signature covers the voted content and cannot be
+// lifted onto a different case, agent, or answer.
+func voteAssertionVectors() (any, error) {
+	set := testvectors.Set[testvectors.VoteAssertionCase]{
+		VectorSet:  "governance/vote-assertion",
+		UAIVersion: "0.1",
+		Description: "A human delegate's vote, carried by a WebAuthn assertion whose CHALLENGE is " +
+			"the vote digest. That is what makes INV-005 cryptographic rather than procedural: the " +
+			"signature covers the voted content, so no process that did not touch the authenticator " +
+			"can produce one, and an assertion cannot be replayed onto a different vote. An " +
+			"assertion with the user-verified flag clear is not a vote and must be refused.",
+		Reference: "docs/protocol/10-governance-revocation.md#161-how-a-vote-is-cast",
+	}
+
+	const (
+		rpID   = "governance.uai.world"
+		origin = "https://governance.uai.world"
+	)
+	seed := mustHex("b1946ac92492d2347c6235b4d2611184cb2c1b8b33f3e0e8f0e2f3d5c6a7b8c9")
+	priv := ed25519.NewKeyFromSeed(seed)
+	pub := priv.Public().(ed25519.PublicKey)
+	jwk := json.RawMessage(fmt.Sprintf(`{"kty":"OKP","crv":"Ed25519","x":%q}`,
+		base64.RawURLEncoding.EncodeToString(pub)))
+
+	statement := governance.Statement{
+		CaseID: "UAI-INC-000041", Proposal: governance.KindPermanentRevocation,
+		SubjectAgentDID: "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+		EvidenceDigest:  "sha256:" + strings.Repeat("3e7b", 16),
+		DelegateDID:     "did:uai:delegate:01JY8RD40000000000000000AR",
+		Value:           governance.VoteYes,
+		Nonce:           "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
+	}
+	digest, err := statement.Digest()
+	if err != nil {
+		return nil, err
+	}
+	statementJSON, err := json.Marshal(statement)
+	if err != nil {
+		return nil, err
+	}
+
+	// authenticatorData = SHA-256(rpId) || flags || signCount.
+	authData := func(flags byte) []byte {
+		sum := sha256.Sum256([]byte(rpID))
+		out := append([]byte{}, sum[:]...)
+		out = append(out, flags)
+		return append(out, 0x00, 0x00, 0x00, 0x2a)
+	}
+	clientData := func(challenge []byte, org string) []byte {
+		// Hand-built rather than marshalled from a map, because the exact bytes
+		// are what gets hashed: a reordering by a serializer would change the
+		// signature without changing anything a reader would notice.
+		return []byte(`{"type":"webauthn.get","challenge":"` +
+			base64.RawURLEncoding.EncodeToString(challenge) +
+			`","origin":"` + org + `","crossOrigin":false}`)
+	}
+	sign := func(auth, client []byte) string {
+		message := append(append([]byte{}, auth...), func() []byte {
+			sum := sha256.Sum256(client)
+			return sum[:]
+		}()...)
+		return base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, message))
+	}
+
+	const (
+		flagsUPUV = 0x05 // user present + user verified
+		flagsUP   = 0x01 // user present only
+	)
+
+	good := clientData(digest, origin)
+	set.Cases = append(set.Cases, testvectors.VoteAssertionCase{
+		Name: "a delegate votes YES", Statement: statementJSON,
+		VoteDigest:        uaicrypto.FormatDigest(digest),
+		AuthenticatorData: base64.RawURLEncoding.EncodeToString(authData(flagsUPUV)),
+		ClientDataJSON:    base64.RawURLEncoding.EncodeToString(good),
+		Signature:         sign(authData(flagsUPUV), good),
+		PublicKeyJWK:      jwk, RelyingPartyID: rpID, Origin: origin,
+		UserVerified: true, MustVerify: true,
+	})
+
+	// The same signature, over authenticator data whose UV flag is clear. It is
+	// cryptographically fine and it is not a vote.
+	noUV := authData(flagsUP)
+	set.Cases = append(set.Cases, testvectors.VoteAssertionCase{
+		Name:      "the same ceremony without user verification is not a vote",
+		Statement: statementJSON, VoteDigest: uaicrypto.FormatDigest(digest),
+		AuthenticatorData: base64.RawURLEncoding.EncodeToString(noUV),
+		ClientDataJSON:    base64.RawURLEncoding.EncodeToString(good),
+		Signature:         sign(noUV, good),
+		PublicKeyJWK:      jwk, RelyingPartyID: rpID, Origin: origin,
+		UserVerified: false, MustVerify: false,
+		FailureReason: "INV-005: an assertion without user verification proves a device was " +
+			"present, not that a human decided. Counting it would make the threshold mean " +
+			"something else.",
+	})
+
+	// A YES on one case, presented as a YES on another.
+	other := statement
+	other.CaseID = "UAI-INC-000042"
+	otherDigest, err := other.Digest()
+	if err != nil {
+		return nil, err
+	}
+	otherJSON, err := json.Marshal(other)
+	if err != nil {
+		return nil, err
+	}
+	set.Cases = append(set.Cases, testvectors.VoteAssertionCase{
+		Name:      "an assertion cannot be lifted onto another case",
+		Statement: otherJSON, VoteDigest: uaicrypto.FormatDigest(otherDigest),
+		AuthenticatorData: base64.RawURLEncoding.EncodeToString(authData(flagsUPUV)),
+		ClientDataJSON:    base64.RawURLEncoding.EncodeToString(good),
+		Signature:         sign(authData(flagsUPUV), good),
+		PublicKeyJWK:      jwk, RelyingPartyID: rpID, Origin: origin,
+		UserVerified: true, MustVerify: false,
+		FailureReason: "the challenge inside the assertion is the digest of a different case",
+	})
+
+	// Produced for a different site.
+	elsewhere := clientData(digest, "https://not-uai.example")
+	set.Cases = append(set.Cases, testvectors.VoteAssertionCase{
+		Name:      "an assertion produced for another origin is refused",
+		Statement: statementJSON, VoteDigest: uaicrypto.FormatDigest(digest),
+		AuthenticatorData: base64.RawURLEncoding.EncodeToString(authData(flagsUPUV)),
+		ClientDataJSON:    base64.RawURLEncoding.EncodeToString(elsewhere),
+		Signature:         sign(authData(flagsUPUV), elsewhere),
+		PublicKeyJWK:      jwk, RelyingPartyID: rpID, Origin: origin,
+		UserVerified: true, MustVerify: false,
+		FailureReason: "the ceremony happened at another origin",
 	})
 	return set, nil
 }
