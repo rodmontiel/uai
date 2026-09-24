@@ -23,6 +23,11 @@
 | **11** | Security | Threat model validation, pentest checklist, invariant tests | Every INV negative test is blocking in CI |
 | **12** | Deployment | Compose hardened, then Kubernetes + SPIRE | `make dev` ≤ 5 min; k8s manifests deploy |
 
+Phases 0–11 are implemented. Phase 11 closed with `make pentest`, `make threats`,
+`make invariant-coverage` and a CI workflow in which every gate blocks — see
+[§20.4](13-threat-model.md#204-control-validation) for which controls exist and
+[§20.5](13-threat-model.md#205-controls-named-in-201-that-do-not-exist-yet) for which do not.
+
 Ordering rationale: cryptography (5) comes *after* a first working backend (4) deliberately — the
 core is built against the spec's test vectors from phase 2, so phase 5 hardens and completes
 rather than blocking. Policy (6) precedes blockchain (7) because the contracts read thresholds

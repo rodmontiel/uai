@@ -100,6 +100,12 @@ contract RevocationTest is Test {
 
     /// @notice The heart of it: an administrator may SUBMIT a revocation, never
     ///         decide one. Everything below is a way of trying to decide.
+    ///
+    ///         This block is INV-010 -- "permanent revocation requires valid
+    ///         human decision evidence" -- at the layer §20.3 calls primary.
+    ///         The application also recomputes the decision, but that check
+    ///         runs on a server an attacker who got this far already owns.
+    ///         Here the votes are verified by the code that writes the event.
     function test_RevertsWithoutAuthorization() public {
         UAIVoting.Vote[] memory votes = _quorum();
         vm.expectRevert(abi.encodeWithSelector(UAIRevocationRegistry.NotAuthorized_.selector, CASE_ID));
@@ -142,6 +148,11 @@ contract RevocationTest is Test {
     }
 
     /// @notice A signature by somebody who is not the registered delegate.
+    /// @notice INV-004 on-chain: a vote is a delegate's signature over the vote
+    ///         digest, so substituting one means producing that signature.
+    ///         Nobody with write access to the database -- or to this call --
+    ///         can do that, which is what makes votes unmodifiable rather than
+    ///         merely protected.
     function test_RevertsOnForgedVote() public {
         _authorize();
         UAIVoting.Vote[] memory votes = _quorum();

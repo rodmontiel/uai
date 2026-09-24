@@ -1,0 +1,3 @@
+ALTER TABLE votes DROP CONSTRAINT IF EXISTS votes_nonce_nonempty;
+ALTER TABLE votes DROP CONSTRAINT IF EXISTS votes_nonce_required;
+ALTER TABLE votes DROP COLUMN IF EXISTS nonce;

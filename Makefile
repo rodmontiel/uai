@@ -217,6 +217,55 @@ demo-down:
 	@rm -f $(DEMO_KEYS)/gateway.pid
 	@$(CONTAINER) rm -f uai-pg-demo >/dev/null 2>&1 || true
 
+## ---------- the pentest ----------
+PENTEST_PORT ?= 8089
+PENTEST_DSN  ?= postgres://uai:uai@localhost:55467/uai?sslmode=disable
+PENTEST_KEYS ?= .keys/pentest
+
+.PHONY: pentest
+pentest: ## Attack a live gateway from outside and fail if anything succeeds
+	@$(MAKE) --no-print-directory pentest-up
+	@trap '$(MAKE) --no-print-directory pentest-down' EXIT; \
+		PG_DSN="$(PENTEST_DSN)" python3 test/attacks/pentest.py \
+			--endpoint http://127.0.0.1:$(PENTEST_PORT) --dsn "$(PENTEST_DSN)" \
+			--keys $(PENTEST_KEYS)
+
+# Its own stack, on its own port. Sharing the demo's would make the two
+# interfere: the pentest registers agents and files requests the demo would then
+# find already there, and a scenario whose result depends on what ran before it
+# is not a scenario.
+.PHONY: pentest-up
+pentest-up:
+	@$(CONTAINER) rm -f uai-pg-pentest >/dev/null 2>&1 || true
+	@$(CONTAINER) run -d --name uai-pg-pentest -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
+		-e POSTGRES_DB=uai -p 127.0.0.1:55467:5432 $(PG_IMAGE) >/dev/null
+	@for i in $$(seq 1 60); do \
+		$(CONTAINER) exec uai-pg-pentest psql -U uai -d uai -qtAc 'select 1' >/dev/null 2>&1 \
+			&& break; sleep 1; done
+	@for f in $$(ls db/migrations/*.up.sql db/seed/*.up.sql | sort); do \
+		$(CONTAINER) exec -i uai-pg-pentest psql -U uai -d uai -v ON_ERROR_STOP=1 -q < $$f || exit 1; \
+	done
+	@stale=$$(ss -ltnp 2>/dev/null | grep ":$(PENTEST_PORT) " | grep -oP 'pid=\K[0-9]+' | head -1); \
+		if [ -n "$$stale" ]; then kill $$stale 2>/dev/null || true; sleep 1; fi
+	@if ss -ltn 2>/dev/null | grep -q ":$(PENTEST_PORT) "; then \
+		echo "port $(PENTEST_PORT) is in use by something this target did not start."; exit 1; fi
+	@mkdir -p $(PENTEST_KEYS) && chmod 700 $(PENTEST_KEYS)
+	@test -f $(PENTEST_KEYS)/issuer.jwk || \
+		$(GO) run ./tools/uai-keygen -out $(PENTEST_KEYS)/issuer.jwk -did "$(ISSUER_DID)" >/dev/null
+	@PG_DSN="$(PENTEST_DSN)" $(GO) run ./services/gateway -addr 127.0.0.1:$(PENTEST_PORT) \
+		-scheme http -issuer-key $(PENTEST_KEYS)/issuer.jwk > $(PENTEST_KEYS)/gateway.log 2>&1 & \
+		echo $$! > $(PENTEST_KEYS)/gateway.pid
+	@for i in $$(seq 1 40); do \
+		curl -sf http://127.0.0.1:$(PENTEST_PORT)/v1/quarantines >/dev/null 2>&1 && break; sleep 1; done
+	@curl -sf http://127.0.0.1:$(PENTEST_PORT)/v1/quarantines >/dev/null 2>&1 || { \
+		echo "the gateway did not come up:"; tail -5 $(PENTEST_KEYS)/gateway.log; exit 1; }
+
+.PHONY: pentest-down
+pentest-down:
+	@test -f $(PENTEST_KEYS)/gateway.pid && kill $$(cat $(PENTEST_KEYS)/gateway.pid) 2>/dev/null || true
+	@rm -f $(PENTEST_KEYS)/gateway.pid
+	@$(CONTAINER) rm -f uai-pg-pentest >/dev/null 2>&1 || true
+
 .PHONY: build
 build: ## Build everything
 	$(GO) build ./...
@@ -291,14 +340,21 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 	done
 	@UAI_TEST_DSN="postgres://uai:uai@localhost:55433/uai?sslmode=disable" \
 		$(GO) test ./internal/... -count=1 -race
-	@$(CONTAINER) exec -i uai-pg-test psql -U uai -d uai -v ON_ERROR_STOP=1 -q -f - < test/invariants/invariants.sql 2>&1 \
-		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
-	@$(CONTAINER) rm -f uai-pg-test >/dev/null
+	@# Through the runner, never through a pipe. `psql | grep` reports a
+	@# failing invariant and exits 0, which is how this suite ran green for
+	@# nine phases without ever having been enforced.
+	@set -e; trap '$(CONTAINER) rm -f uai-pg-test >/dev/null 2>&1 || true' EXIT; \
+		./test/invariants/run.sh $(CONTAINER) exec -i uai-pg-test psql -U uai -d uai
 
 .PHONY: invariants
 invariants: ## Assert that the forbidden operations fail (INV-001..010)
-	@psql "$(PG_DSN)" -v ON_ERROR_STOP=1 -f test/invariants/invariants.sql 2>&1 \
-		| grep -E 'PASS|FAIL|ERROR' | sed -E 's/^psql:[^:]+:[0-9]+: NOTICE:  //'
+	@./test/invariants/run.sh psql "$(PG_DSN)"
+
+.PHONY: invariant-coverage
+invariant-coverage: ## Check that every invariant in §20.3 has a negative test, in two layers
+	$(GO) test ./test/invariants/ -count=1 -v -run TestCoverageIsReported 2>&1 \
+		| sed -n 's/^ *coverage_test.go:[0-9]*: //p'
+	$(GO) test ./test/invariants/ -count=1
 
 .PHONY: lint
 lint: ## Static analysis and formatting check
@@ -310,8 +366,12 @@ lint: ## Static analysis and formatting check
 fmt: ## Format Go sources
 	$(GO) fmt ./...
 
+.PHONY: threats
+threats: ## Check that every threat in §20.1 names evidence that exists
+	$(GO) test ./test/threatmodel/ -count=1
+
 .PHONY: check
-check: build lint test conformance vectors-check policy-verify ## Everything that must pass before a commit
+check: build lint test conformance vectors-check policy-verify threats ## Everything that must pass before a commit
 
 ## ---------- container images ----------
 .PHONY: image

@@ -342,6 +342,10 @@ type CastVote struct {
 	AssertionSignature []byte
 	UserVerified       bool
 	CastAt             time.Time
+	// Nonce is stored so the tally can rebuild VoteDigest from the statement.
+	// Without it the recorded value is only as trustworthy as whoever wrote
+	// the row, which is the opposite of what a vote is supposed to be.
+	Nonce string
 }
 
 // RecordVote stores a verified vote.
@@ -353,11 +357,11 @@ func (db *DB) RecordVote(ctx context.Context, v CastVote) error {
 	_, err := db.pool.Exec(ctx, `
 		INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest,
 		                   rationale_hash, vote_digest, authenticator_data, client_data_json,
-		                   assertion_signature, user_verified, cast_at)
-		VALUES ($1,$2,$3,$4,$5::vote_value,$6,$7,$8,$9,$10,$11,$12,COALESCE($13, now()))`,
+		                   assertion_signature, user_verified, cast_at, nonce)
+		VALUES ($1,$2,$3,$4,$5::vote_value,$6,$7,$8,$9,$10,$11,$12,COALESCE($13, now()),$14)`,
 		v.ID, v.ProposalID, v.DelegateID, v.Country, v.Value, v.EvidenceDigest,
 		nullable(v.RationaleHash), v.VoteDigest, v.AuthenticatorData, v.ClientDataJSON,
-		v.AssertionSignature, v.UserVerified, nullableTime(v.CastAt))
+		v.AssertionSignature, v.UserVerified, nullableTime(v.CastAt), v.Nonce)
 	return classify(err)
 }
 
@@ -377,6 +381,10 @@ type VoteRecord struct {
 	UserVerified       bool
 	CastAt             time.Time
 	PublicJWK          json.RawMessage
+	// Nonce completes the statement of §15.3 so the tally can rebuild
+	// vote_digest instead of trusting the column next to it. Empty for votes
+	// recorded before migration 0007, which is why the tally refuses those.
+	Nonce string
 }
 
 // ProposalVotes returns the live votes on a proposal, with the delegate keys
@@ -388,7 +396,8 @@ func (db *DB) ProposalVotes(ctx context.Context, proposalID string) ([]VoteRecor
 	rows, err := db.pool.Query(ctx, `
 		SELECT v.id, v.proposal_id, v.delegate_id, d.did, v.country_code, v.value::text,
 		       v.evidence_digest, v.vote_digest, v.authenticator_data, v.client_data_json,
-		       v.assertion_signature, v.user_verified, v.cast_at, d.webauthn_public_key
+		       v.assertion_signature, v.user_verified, v.cast_at, d.webauthn_public_key,
+		       COALESCE(v.nonce, '')
 		  FROM votes v
 		  JOIN human_delegates d ON d.id = v.delegate_id
 		 WHERE v.proposal_id = $1 AND v.superseded_by IS NULL
@@ -402,7 +411,7 @@ func (db *DB) ProposalVotes(ctx context.Context, proposalID string) ([]VoteRecor
 		var v VoteRecord
 		if err := rows.Scan(&v.ID, &v.ProposalID, &v.DelegateID, &v.DelegateDID, &v.Country,
 			&v.Value, &v.EvidenceDigest, &v.VoteDigest, &v.AuthenticatorData, &v.ClientDataJSON,
-			&v.AssertionSignature, &v.UserVerified, &v.CastAt, &v.PublicJWK); err != nil {
+			&v.AssertionSignature, &v.UserVerified, &v.CastAt, &v.PublicJWK, &v.Nonce); err != nil {
 			return nil, classify(err)
 		}
 		out = append(out, v)

@@ -202,3 +202,26 @@ autores angostó el protocolo sin decirlo.
     una fecha de vigencia futura, así que re-firmar tras editar una regla movía en silencio
     cuándo entraba en vigor — y el gateway, fallando cerrado, se negaba a arrancar por un
     cambio que nadie hizo. Ya pasó dos veces; ahora se arrastra del manifest y hay test.
+24. **Un gate que nunca se vio fallar no es un gate.** Antes de creerle a uno, romperlo: sacarle
+    el trigger a la base, truncarle el archivo, renombrarle el test que cita. Los tres gates de
+    la Fase 11 se escribieron así, y dos de ellos no servían hasta que se los rompió.
+25. **El exit status de un pipeline es el del último comando.** `psql -f invariants.sql | grep
+    PASS | sed ...` imprimía `FAIL INV-003 the forbidden operation SUCCEEDED` en rojo y salía 0.
+    La suite de invariantes existió desde la Fase 3, corrió en cada `make integration`, y no
+    pudo hacer fallar nada en nueve fases. Ninguna aserción sale por un pipe.
+26. **Una suite que puede encoger o cortarse a la mitad en silencio no es un gate.** Contar lo
+    que corrió contra lo que el archivo contiene. "Las aserciones que corrieron pasaron" y "toda
+    aserción corrió y pasó" son afirmaciones distintas, y solo la segunda sirve.
+27. **Un documento que describe controles deriva hacia describir intenciones.** El registro de
+    amenazas listaba rate limiting, prueba de dominio `did:web`, notificación al owner, SBOM y
+    firma de artefactos, contra-atestación y detección de fork entre instancias. Ninguno existe.
+    El preámbulo lo cubría ("después de implementar los controles"); nadie lee una tabla así.
+    Ahora cada amenaza declara estado y nombra un archivo, y `make threats` falla si el archivo
+    no está o si el test que cita se renombró.
+28. **Verificar una firma contra un digest guardado prueba que ese digest se firmó, no que la
+    fila alrededor sea cierta.** El recuento verificaba la aserción WebAuthn contra la columna
+    `vote_digest` y después informaba la columna `value`, sin que nada revisara que las dos
+    fueran juntas. Una aserción genuina del delegado, archivada con el valor opuesto, pasaba
+    todas las revisiones de la aplicación. El digest se reconstruye desde el statement — el
+    valor incluido — así que cambiarlo rompe la firma. El nonce se guarda porque sin él no se
+    puede reconstruir nada, y ese era el motivo real del `_ = statement` que estaba en el código.

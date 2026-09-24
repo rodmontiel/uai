@@ -172,6 +172,13 @@ func TestCommitmentOpensAndHidesContent(t *testing.T) {
 	}
 }
 
+// TestCommitmentIsSaltedNotBareHash is INV-008 on the way IN.
+//
+// The contracts refuse any parameter that could carry personal data, which
+// stops a string. It cannot stop SHA-256("alice@example.com") -- 32 bytes that
+// look exactly like a commitment and are recoverable from a wordlist in
+// seconds. §19.3's answer is the salt, and this is where that is enforced:
+// the same content must commit differently every time.
 func TestCommitmentIsSaltedNotBareHash(t *testing.T) {
 	// Two commitments to identical low-entropy content must differ, otherwise
 	// publishing the commitment on-chain would publish the content.

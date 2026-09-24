@@ -29,6 +29,27 @@ Anything that breaks one of the security invariants in
 A proof-of-concept that violates any of these is always in scope, including through
 configuration, migrations, CI, or the frontend.
 
+Each invariant has negative tests at two or more layers, and
+[`test/invariants/coverage_test.go`](test/invariants/coverage_test.go) fails the build if one of
+them stops. If you find a way past them, that is the report we most want.
+
+## Before reporting, you can reproduce our own checks
+
+```bash
+make pentest             # attacks a live gateway from outside; fails if anything succeeds
+make invariants          # what the database refuses, from inside
+make invariant-coverage  # every INV-001..010 has a negative test, in two layers
+make threats             # 20 of the threat model, checked against the repository
+```
+
+[`docs/security/pentest-checklist.md`](docs/security/pentest-checklist.md) lists what is
+automated and what still needs a person, and
+[§20.5](docs/protocol/13-threat-model.md#205-controls-named-in-201-that-do-not-exist-yet) lists
+the controls named in the threat model that **do not exist yet** — rate limiting, `did:web`
+domain-control proof, owner notification on registration, SBOM and artifact signing,
+counter-attestation, and cross-instance fork observation. Reporting one of those is welcome but
+it is not a finding; it is a roadmap item we have written down.
+
 ## Explicitly out of scope
 
 These are documented accepted risks, not defects — see §20.2 of the threat model:

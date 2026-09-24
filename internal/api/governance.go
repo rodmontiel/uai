@@ -131,6 +131,7 @@ func (s *Server) castVote(w http.ResponseWriter, r *http.Request) {
 		VoteDigest:        uaicrypto.FormatDigest(digest),
 		AuthenticatorData: assertion.AuthenticatorData, ClientDataJSON: assertion.ClientDataJSON,
 		AssertionSignature: assertion.Signature, UserVerified: true, CastAt: now,
+		Nonce: body.Nonce,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -260,19 +261,42 @@ func (s *Server) verifiedVotes(proposal store.ProposalRecord,
 		if err != nil {
 			return nil, fmt.Errorf("vote %s: delegate credential: %w", v.ID, err)
 		}
+		// The challenge is REBUILT from the statement, not read from the row.
+		//
+		// Verifying the assertion against the stored vote_digest proves the
+		// delegate signed that digest -- it proves nothing about the value
+		// stored beside it. A genuine assertion from another proposal, filed
+		// here with the opposite value, would have passed that check; the
+		// contract would have refused it on execution and nothing before then
+		// would have. So the value is not read, it is TESTED: change it and
+		// the digest changes and the signature stops verifying.
+		if v.Nonce == "" {
+			return nil, fmt.Errorf(
+				"vote %s stores no nonce, so its digest cannot be rebuilt and its value "+
+					"cannot be checked against its signature (predates migration 0007)", v.ID)
+		}
 		statement := governance.Statement{
 			CaseID: proposal.CaseID, Proposal: proposal.Kind,
 			SubjectAgentDID: proposal.AgentDID, EvidenceDigest: v.EvidenceDigest,
-			DelegateDID: v.DelegateDID, Value: v.Value, Nonce: nonceFromClientData(v.ClientDataJSON),
+			DelegateDID: v.DelegateDID, Value: v.Value, Nonce: v.Nonce,
 		}
-		_ = statement
+		digest, err := statement.Digest()
+		if err != nil {
+			return nil, fmt.Errorf("vote %s: rebuilding the digest: %w", v.ID, err)
+		}
+		// Said separately from the signature check so the two failures do not
+		// read alike: a digest that disagrees with the stored one means the row
+		// was edited, and a signature that fails against a rebuilt digest means
+		// the assertion never covered this statement. Both are refusals; only
+		// one of them is someone rewriting the record.
+		if stored := uaicrypto.FormatDigest(digest); stored != v.VoteDigest {
+			return nil, fmt.Errorf(
+				"vote %s does not match its own statement: stored digest %s, rebuilt %s",
+				v.ID, v.VoteDigest, stored)
+		}
 		assertion := webauthn.Assertion{
 			AuthenticatorData: v.AuthenticatorData, ClientDataJSON: v.ClientDataJSON,
 			Signature: v.AssertionSignature,
-		}
-		digest, err := uaicrypto.ParseDigest(v.VoteDigest)
-		if err != nil {
-			return nil, fmt.Errorf("vote %s: stored digest: %w", v.ID, err)
 		}
 		if err := webauthn.Verify(pub, assertion, webauthn.Expectation{
 			Challenge: digest, Origin: s.governanceOrigin, RelyingPartyID: s.governanceRPID,
@@ -294,12 +318,6 @@ func (s *Server) verifiedVotes(proposal store.ProposalRecord,
 	}
 	return out, nil
 }
-
-// nonceFromClientData is unused in the tally path and kept out of it on
-// purpose: the stored vote_digest is what the assertion actually covered, so
-// re-deriving a digest from a reconstructed statement would only introduce a
-// way for the two to disagree.
-func nonceFromClientData([]byte) string { return "" }
 
 // getProposal returns a proposal with its recomputed tally.
 func (s *Server) getProposal(w http.ResponseWriter, r *http.Request) {

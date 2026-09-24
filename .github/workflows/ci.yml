@@ -1,0 +1,189 @@
+name: ci
+
+# Every gate in this file blocks. That is the whole point of it existing:
+# the invariant suite was written in phase 3, ran in `make integration` from
+# then on, and could not fail anything -- `psql | grep PASS` exits with grep's
+# status, so a FORBIDDEN OPERATION SUCCEEDED printed in red and the build went
+# green. Phase 11's deliverable is that this is no longer possible.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  # ── what must pass before a commit ──────────────────────────────────────────
+  check:
+    name: build, lint, vectors, policy, threat model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: build
+        run: go build ./...
+      - name: vet and gofmt
+        run: make lint
+      - name: unit tests
+        run: go test ./... -count=1
+      - name: conformance vectors, schemas and OpenAPI
+        run: make conformance
+      # A vector that changed is a protocol that changed. It has to be a
+      # deliberate commit, never a side effect of running the generator.
+      - name: vectors are reproducible
+        run: make vectors-check
+      # Policy cannot be changed by whoever can write to the repository.
+      - name: the signed policy bundle verifies
+        run: make policy-verify
+      - name: the threat model matches the repository
+        run: make threats
+      - name: every invariant has a negative test, in two layers
+        run: make invariant-coverage
+
+  # ── the invariants, against a real PostgreSQL ───────────────────────────────
+  invariants:
+    name: invariants and store integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Pinned by digest, same as deploy/compose/compose.yaml: asserting the
+        # invariants against a different PostgreSQL than developers run is how a
+        # version-specific trigger behaviour ships green and breaks on a laptop.
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: uai
+          POSTGRES_PASSWORD: uai
+          POSTGRES_DB: uai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U uai"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PG_DSN: postgres://uai:uai@localhost:5432/uai?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: migrate and seed
+        run: |
+          go run ./tools/uai-migrate -dsn "$PG_DSN" -dir db/migrations up
+          go run ./tools/uai-migrate -dsn "$PG_DSN" -dir db/seed up
+      - name: store and API integration tests
+        run: UAI_TEST_DSN="$PG_DSN" go test ./internal/... -count=1 -race
+      # THE gate. It exits non-zero when a forbidden operation succeeds, when
+      # the suite stops early, and when fewer assertions run than the file
+      # contains -- because silence is not evidence.
+      - name: INV-001..010 negative tests
+        run: ./test/invariants/run.sh psql "$PG_DSN"
+
+  # ── the contracts ───────────────────────────────────────────────────────────
+  contracts:
+    name: contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: forge test
+        run: forge test -vv
+        working-directory: contracts
+      # INV-007/008 as a build gate: a contract that declares a parameter which
+      # COULD carry a prompt, a document or an email address does not get past
+      # this. It reads the compiled ABI, so it runs after forge.
+      - name: no content can reach the chain
+        run: go test ./test/onchain/ -count=1
+      - name: the published ABIs are unchanged
+        run: make contracts-check
+
+  # ── the three SDKs against the same vectors ─────────────────────────────────
+  sdk:
+    name: SDKs and MCP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: install the Python SDK's one dependency
+        run: pip install cryptography
+      # Each SDK reimplements RFC 8785 and RFC 9421 in its own language, and each
+      # is held to the SAME committed vectors. That is what keeps three
+      # implementations from drifting into three subtly different protocols.
+      - name: Python SDK
+        run: make test-sdk-python
+      - name: TypeScript SDK
+        run: make test-sdk-ts
+      - name: browser verification code
+        run: make test-web
+      - name: MCP server
+        run: go test ./mcp/ -count=1
+
+  # ── attacks, against a live gateway ─────────────────────────────────────────
+  pentest:
+    name: pentest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the Python SDK's one dependency
+        run: pip install cryptography
+      - name: install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      # Docker rather than podman on the runner; the Makefile supports both
+      # because a protocol that only runs on one vendor's runtime is not
+      # portable, and portability is what we ask other implementers for.
+      - name: attack it
+        run: make CONTAINER=docker pentest
+
+  # ── the 21 MVP criteria ─────────────────────────────────────────────────────
+  demo:
+    name: demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the Python SDK's one dependency
+        run: pip install cryptography
+      - name: install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      # `make demo` exits non-zero if any of the 21 criteria of §24.5 is not
+      # demonstrated. It is a test that can be read, not a narration that runs.
+      - name: the ACME scenario
+        run: make CONTAINER=docker demo

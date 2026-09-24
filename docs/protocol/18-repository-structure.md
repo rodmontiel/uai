@@ -8,9 +8,11 @@
 
 ```text
 uai/
+├── .github/workflows/         # CI: every gate here blocks (26.1 phase 11)
 ├── docs/
 │   ├── protocol/              # this specification (26 sections)
 │   ├── integrators/           # integration guide, conformance, adapters
+│   ├── security/              # pentest checklist
 │   └── adr/                   # architecture decision records
 ├── spec/
 │   ├── schemas/               # JSON Schema for every wire object
@@ -60,7 +62,10 @@ uai/
 │   ├── uai-verify/            # standalone verification CLI (no UAI dependency)
 │   └── uai-conformance/       # runs test vectors against any implementation
 ├── test/
-│   ├── e2e/  integration/  invariants/    # INV-001..010 negative tests
+│   ├── invariants/            # INV-001..010 negative tests + the coverage gate
+│   ├── attacks/               # the pentest, run against a live gateway
+│   ├── threatmodel/           # 20 checked against the repository
+│   ├── e2e/  integration/  onchain/  schemas/  openapi/  web/
 ├── Makefile
 ├── go.mod                     # single Go module (see 25.3)
 └── CLAUDE.md

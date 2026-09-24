@@ -200,6 +200,13 @@ func TestTheProofCoversEveryConsequence(t *testing.T) {
 
 // TestRecomputeRejectsAForgedDecision: the only forgery this design leaves room
 // for is a decision whose stated outcome does not follow from its own votes.
+//
+// This is INV-010 -- "permanent revocation requires valid human decision
+// evidence" -- at the application layer. The contract is the primary check
+// (§16.3); this is the one that runs before anything reaches a chain, and it
+// refuses the same four forgeries: a tally that does not match the votes, a
+// vote removed after the fact, a subject swapped after authorization, and a
+// threshold lowered to fit the votes that arrived.
 func TestRecomputeRejectsAForgedDecision(t *testing.T) {
 	votes := []governance.Vote{
 		vote("01A", "01AR", "AR", "YES"),

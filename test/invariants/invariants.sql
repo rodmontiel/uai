@@ -108,9 +108,10 @@ VALUES ('prop-1', 'UAI-INC-000041', 'PERMANENT_REVOCATION', 'ag-1', 'sha256:' ||
         'GASC-2027.4', 'sha256:' || repeat('1', 64), '4-of-5', 'VOTING', now() + interval '7 days');
 
 INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest, vote_digest,
-                   authenticator_data, client_data_json, assertion_signature, user_verified)
+                   authenticator_data, client_data_json, assertion_signature, user_verified, nonce)
 VALUES ('vote-1', 'prop-1', 'del-ar', 'AR', 'YES', 'sha256:' || repeat('f', 64),
-        'sha256:' || repeat('9', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true);
+        'sha256:' || repeat('9', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true,
+        'nonce-vote-1');
 
 -- ── assertion helper ────────────────────────────────────────────────────────
 
@@ -206,9 +207,10 @@ SELECT assert_fails('INV-004', 'vote cannot be deleted', $$
 SELECT assert_fails('INV-004', 'one live vote per delegate per proposal', $$
     INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest,
                        vote_digest, authenticator_data, client_data_json, assertion_signature,
-                       user_verified)
+                       user_verified, nonce)
     VALUES ('vote-dup', 'prop-1', 'del-ar', 'AR', 'NO', 'sha256:' || repeat('f', 64),
-            'sha256:' || repeat('8', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true)$$);
+            'sha256:' || repeat('8', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true,
+            'nonce-vote-dup')$$);
 
 -- ── INV-005 · no AI can execute a permanent revocation ──────────────────────
 -- An automated process has no hardware authenticator, so it cannot produce a
@@ -217,9 +219,28 @@ SELECT assert_fails('INV-004', 'one live vote per delegate per proposal', $$
 SELECT assert_fails('INV-005', 'vote without user verification rejected', $$
     INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest,
                        vote_digest, authenticator_data, client_data_json, assertion_signature,
-                       user_verified)
+                       user_verified, nonce)
     VALUES ('vote-bot', 'prop-1', 'del-de', 'DE', 'YES', 'sha256:' || repeat('f', 64),
-            'sha256:' || repeat('7', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, false)$$);
+            'sha256:' || repeat('7', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, false,
+            'nonce-vote-bot')$$);
+
+-- A vote nobody can rebuild the digest of is a value somebody wrote down. The
+-- tally refuses to count one; the table refuses to store one.
+SELECT assert_fails('INV-004', 'a vote without its nonce is refused', $$
+    INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest,
+                       vote_digest, authenticator_data, client_data_json, assertion_signature,
+                       user_verified)
+    VALUES ('vote-nononce', 'prop-1', 'del-de', 'DE', 'YES', 'sha256:' || repeat('f', 64),
+            'sha256:' || repeat('5', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true)$$);
+
+-- An empty nonce rebuilds a digest that silently differs from the signed one,
+-- which reads as tampering rather than as a missing field.
+SELECT assert_fails('INV-004', 'a vote whose nonce is empty is refused', $$
+    INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest,
+                       vote_digest, authenticator_data, client_data_json, assertion_signature,
+                       user_verified, nonce)
+    VALUES ('vote-emptynonce', 'prop-1', 'del-de', 'DE', 'YES', 'sha256:' || repeat('f', 64),
+            'sha256:' || repeat('4', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true, '')$$);
 
 -- ── INV-006 · a revoked identity retains its history ────────────────────────
 
@@ -346,9 +367,10 @@ SELECT assert_fails('PROTO', 'unattributable suspicion rejected', $$
 -- A vote may be superseded by a NEW signed statement; that is the only
 -- permitted update, and both rows survive.
 INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest, vote_digest,
-                   authenticator_data, client_data_json, assertion_signature, user_verified)
+                   authenticator_data, client_data_json, assertion_signature, user_verified, nonce)
 VALUES ('vote-1b', 'prop-1', 'del-de', 'DE', 'NO', 'sha256:' || repeat('f', 64),
-        'sha256:' || repeat('6', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true);
+        'sha256:' || repeat('6', 64), '\x01'::bytea, '\x02'::bytea, '\x03'::bytea, true,
+        'nonce-vote-1b');
 UPDATE votes SET superseded_by = 'vote-1b' WHERE id = 'vote-1';
 DO $$
 BEGIN

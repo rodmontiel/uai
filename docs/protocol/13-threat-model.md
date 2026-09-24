@@ -97,7 +97,92 @@ Each invariant has a corresponding **negative test** in the test suite — a tes
 forbidden operation fails. Those tests are the executable form of this table
 ([§51](17-mvp-scope.md)).
 
-## 20.4 Abuse cases (misuse of legitimate features)
+## 20.4 Control validation
+
+§20.1 lists controls. This section says which of them **exist**, and names the artifact that
+demonstrates each one — because a register that reads as though everything in the Controls column
+were implemented is a more dangerous document than no register at all. The preamble hedges it
+("residual risk is what remains *after* the listed controls are implemented as specified"); nobody
+reads a table that way.
+
+Status vocabulary:
+
+| Status | Meaning |
+|---|---|
+| **ENFORCED** | The control exists and a named test asserts it. A regression fails the build |
+| **PARTIAL** | Some of §20.1's controls exist and some do not. The missing ones are listed in [§20.5](#205-controls-named-in-201-that-do-not-exist-yet), and until they do, the residual risk is **higher** than §20.1 states |
+| **ACCEPTED** | [§20.2](#202-accepted-risks) accepts this residual. The evidence shows the system behaving as described, not preventing it |
+| **PLANNED** | None of the listed controls exists yet |
+
+`make threats` checks this table against the repository: every threat in §20.1 needs a row, every
+path named here has to exist, and every status has to come from the vocabulary above.
+
+### Identity and key threats
+
+| ID | Status | Evidence | What the evidence shows |
+|---|---|---|---|
+| T-01 | PARTIAL | `internal/api/registration.go`, `pkg/challenge/` | Registration issues a challenge that the agent's key and the owner's key must each answer. Domain-control proof for `did:web` and notification to the claimed owner do not exist |
+| T-02 | ACCEPTED | `internal/store/store.go` (`ErrFork`), `internal/api/binding.go` | Rotation keeps history; key validity is time-bounded and checked at signing time, not at reading time. A stolen software key still produces valid attestations until it is declared |
+| T-03 | PARTIAL | `db/migrations/0001_init.up.sql` (chain unique index), `internal/store/binding.go` | Two committed events cannot share a predecessor inside one deployment, and a binding records the SPIFFE ID and image digest. Cross-instance fork detection — the case that matters — is an observation nothing performs yet |
+| T-04 | PARTIAL | `internal/api/registration.go` | Assurance level is carried and published, so a relying party can refuse AL0. Per-owner registration rate limits do not exist |
+| T-05 | PARTIAL | `internal/api/credentials.go` | Organization credentials are issued and logged. Legal-entity verification and `did:web` domain control are not implemented |
+| T-06 | ENFORCED | `internal/api/escalate.go`, `test/invariants/invariants.sql` (QUAR) | A quarantine order names the agent and the capabilities it suspends; nothing in it reaches another organization's agents |
+| T-07 | PLANNED | — | SPIFFE workload attestation is recorded at binding time, but SBOM, artifact signing and provenance attestation do not exist. This is the largest gap in the register |
+
+### Protocol and message threats
+
+| ID | Status | Evidence | What the evidence shows |
+|---|---|---|---|
+| T-08 | ENFORCED | `internal/store/request.go` (`NonceCache`), `pkg/pop/`, `internal/api/middleware.go` | A nonce is recorded on first use and refused on the second; the `created` window bounds how long a captured request is worth replaying; attestation nonces are unique per agent |
+| T-09 | ENFORCED | `pkg/attest/attest_test.go`, `test/invariants/invariants.sql` (INV-002) | An attestation without a signature is refused by the database, and one whose signature does not cover the canonical bytes is refused by the verifier |
+| T-10 | ENFORCED | `pkg/uaicrypto/digest.go`, `spec/test-vectors/digest/`, `test/invariants/invariants.sql` | Every digest carries its domain string. A signature made for one purpose does not verify for another, and the database refuses an attestation relabelled into another domain |
+| T-11 | PARTIAL | `internal/api/policy.go`, `pkg/attest/attest.go` | Every action carries a purpose and is evaluated individually rather than under a session grant. Counter-attestation by the target system does not exist |
+| T-12 | ACCEPTED | `demo/demo.py`, `docs/protocol/17-mvp-scope.md` | Out of scope by design. The resulting action is attributed, evaluated and recorded; nothing here prevents the manipulation |
+| T-13 | ENFORCED | `mcp/tools.go`, `mcp/mcp_test.go` (`TestNoToolGrantsCapabilities`), `db/migrations/0006_capability_requests.up.sql` | No MCP tool grants a capability, no API route grants one to its own caller, and the database refuses a grant whose grantor is the agent itself |
+| T-14 | ACCEPTED | `demo/demo.py` (the step after revocation) | The agent's code keeps running after revocation. The demo shows it rather than implying otherwise |
+
+### Log, ledger and infrastructure threats
+
+| ID | Status | Evidence | What the evidence shows |
+|---|---|---|---|
+| T-15 | ENFORCED | `internal/translog/log.go`, `test/invariants/invariants.sql` (INV-003) | The log is append-only in the database and Merkle-structured above it; a rebuilt tree that disagrees with the last published checkpoint refuses to open rather than issuing confident proofs |
+| T-16 | ENFORCED | `internal/translog/witness.go`, `tools/uai-verify/` | Checkpoints are co-signed, a checkpoint below the threshold is reported UNDERWITNESSED rather than silently downgraded, and `uai-verify` checks the co-signatures itself |
+| T-17 | PLANNED | `contracts/` | The contracts exist and the consortium chain does not. `noop-dev` is the only anchor adapter, and it says so instead of fabricating a transaction |
+| T-18 | PARTIAL | `internal/pdp/pdp.go` | Policy evaluation is fail-closed and works from a signed bundle held in memory, so a PDP outage does not become an allow. Rate limiting does not exist |
+| T-19 | ENFORCED | `test/invariants/invariants.sql` (INV-003), `internal/api/invariant_test.go` | Evidence cannot be edited, deleted or truncated; crypto-shredding clears the content and keeps the commitment; and no API path or service statement writes to the evidence tables |
+| T-20 | ENFORCED | `internal/api/registration.go` (`model_pinned`) | Identity does not depend on the provider. An owner can require a specific model version, and a provider breach yields no agent private key |
+
+### Governance and human threats
+
+| ID | Status | Evidence | What the evidence shows |
+|---|---|---|---|
+| T-21 | ENFORCED | `internal/api/governance_test.go` (`TestAnAdministratorCannotChooseAnything`), `contracts/test/Revocation.t.sol` | The administrator's only input to a revocation is a decision id. The contract verifies the delegates' signatures, so an administrator who reaches the chain still cannot decide anything |
+| T-22 | ENFORCED | `pkg/webauthn/`, `db/migrations/0002_governance.up.sql` | A vote is a hardware assertion with user verification; one delegate is below every threshold the bundle allows |
+| T-23 | ACCEPTED | `pkg/governance/governance.go` (`Proof`) | A colluding quorum can revoke an innocent agent. Every vote is individually attributable and permanently recorded; that is the mitigation, and it is not prevention |
+| T-24 | PARTIAL | `db/migrations/0002_governance.up.sql` (`suspicion_reporter_identified`), `internal/api/capability.go` | Reports are signed and attributable, and repeated reports from one reporter do not manufacture corroboration. Rate limits and automatic abuse accounting against a reporter do not exist |
+| T-25 | ENFORCED | `internal/pdp/pdp.go`, `tools/uai-policy/`, `policy/authority.json` | A bundle loads only if M-of-N independent signatures verify and the previous-hash chain holds. `make policy-verify` fails on an edited rule |
+| T-26 | ENFORCED | `pkg/webauthn/webauthn.go`, `internal/api/governance.go` | The WebAuthn challenge **is** the vote digest, so a malicious frontend cannot alter what was voted without invalidating the assertion — and the tally rebuilds that digest from the statement rather than reading the value stored beside it |
+| T-27 | ENFORCED | `db/migrations/0002_governance.up.sql` (quarantine CHECK), `test/invariants/invariants.sql` (QUAR) | A quarantine order without a review date and an expiry cannot be written, and a review date after the expiry is refused |
+
+## 20.5 Controls named in §20.1 that do not exist yet
+
+Extracted from the table above so they cannot be missed. Each one raises the residual risk of the
+threats beside it above what §20.1 records:
+
+| Missing control | Threats affected | Consequence today |
+|---|---|---|
+| Registration rate limits per owner | T-04, T-24 | Mass registration and accusation flooding are bounded by nothing but the database |
+| `did:web` domain-control proof | T-01, T-05 | An organization DID is asserted, not demonstrated. A registrar check is the only thing between a claim and a fake company |
+| Notification to the claimed owner on registration | T-01 | An identity registered in someone's name is discoverable but not announced |
+| SBOM, artifact signing, provenance attestation | T-07 | A compromised build reaches production with a valid identity, because nothing ties the running image to a reviewed source |
+| Counter-attestation by relying parties | T-11 | Selective non-attestation leaves gaps that are visible only to whoever goes looking |
+| Cross-instance fork observation | T-03 | A cloned agent is detectable in principle and detected by nobody |
+
+None of these is hard in the sense of being unsolved. They are listed because a threat model that
+describes intentions in the present tense is the specific failure mode this project has committed
+to avoiding ([§26.4](19-roadmap.md) item 3).
+
+## 20.6 Abuse cases (misuse of legitimate features)
 
 | Abuse case | Feature abused | Mitigation |
 |---|---|---|
@@ -108,7 +193,7 @@ forbidden operation fails. Those tests are the executable form of this table
 | Selective non-attestation (attest only the flattering actions) | Voluntary participation | Sequence gaps and dangling chain links are visible; counter-attestation by relying parties; gaps are a policy signal |
 | Governance capture to eliminate competitors | Voting | Threshold from independent jurisdictions, permanent public attribution of every vote, published rationale |
 
-## 20.5 Out of scope for v0.1
+## 20.7 Out of scope for v0.1
 
 Declared, not omitted: model-weight provenance and evaluation attestation beyond a hash
 reference; runtime behavioral analysis of agent internals; confidential-computing attestation
