@@ -57,6 +57,9 @@ exploited class of bug.
 | `UAI-v1:checkpoint` | Transparency log checkpoints |
 | `UAI-v1:commitment` | Content commitments (see 7.3) |
 | `UAI-v1:audit` | Audit event records |
+| `UAI-v1:capability-request` | An agent asking for a capability it does not hold (22.9) |
+| `UAI-v1:suspicion` | Signed harm reports (14.1) |
+| `UAI-v1:passport` | Passport requests and the passport credential subject binding (11) |
 
 Implementations MUST reject a signature whose domain does not match the context in which it is
 being verified, even if the signature is otherwise cryptographically valid.

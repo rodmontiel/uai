@@ -106,15 +106,8 @@ func (j JWK) Public() (crypto.PublicKey, error) {
 // standard here. It is safe precisely because it is not a signature: nothing
 // accepts a thumbprint as authorization, it only names a key.
 func (j JWK) Thumbprint() ([]byte, error) {
-	var canonical string
-	switch {
-	case j.Kty == "OKP" && j.Crv == "Ed25519":
-		canonical = fmt.Sprintf(`{"crv":%s,"kty":%s,"x":%s}`,
-			quote(j.Crv), quote(j.Kty), quote(j.X))
-	case j.Kty == "EC":
-		canonical = fmt.Sprintf(`{"crv":%s,"kty":%s,"x":%s,"y":%s}`,
-			quote(j.Crv), quote(j.Kty), quote(j.X), quote(j.Y))
-	default:
+	canonical := ThumbprintInput(j)
+	if canonical == "" {
 		return nil, fmt.Errorf("%w: %q/%q", ErrUnsupportedKey, j.Kty, j.Crv)
 	}
 	// Validate before hashing: a thumbprint of a key that cannot be parsed
@@ -125,6 +118,26 @@ func (j JWK) Thumbprint() ([]byte, error) {
 	}
 	sum := sha256.Sum256([]byte(canonical))
 	return sum[:], nil
+}
+
+// ThumbprintInput returns the exact bytes RFC 7638 hashes, or "" for a key type
+// UAI does not accept.
+//
+// Exported because it is what the committed vectors pin alongside the digest.
+// A vector that pinned only the digest would let two implementations disagree
+// about WHY they agree, and the first key type where they diverge would be the
+// one nobody had a vector for.
+func ThumbprintInput(j JWK) string {
+	switch {
+	case j.Kty == "OKP" && j.Crv == "Ed25519":
+		return fmt.Sprintf(`{"crv":%s,"kty":%s,"x":%s}`,
+			quote(j.Crv), quote(j.Kty), quote(j.X))
+	case j.Kty == "EC":
+		return fmt.Sprintf(`{"crv":%s,"kty":%s,"x":%s,"y":%s}`,
+			quote(j.Crv), quote(j.Kty), quote(j.X), quote(j.Y))
+	default:
+		return ""
+	}
 }
 
 // ThumbprintString returns the thumbprint in the "sha256:<hex>" wire form used

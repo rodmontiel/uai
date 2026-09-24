@@ -51,11 +51,15 @@ when its own stated deliverable exists in this repository.
 | Phase | Status | What |
 |---|---|---|
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
-| 2 Protocol | ✅ | 10 JSON Schemas with 40 examples, 3 JSON-LD contexts, OpenAPI 3.1 (21 paths), 10 published vector sets, `uai-conformance` |
-| 3 Data | ✅ | PostgreSQL schema, 34 tables, integrity guards, 35 executable invariant assertions |
-| 4 Backend core | 🟡 | `internal/store` (chain-safe persistence), `internal/api` (problem+json, PoP and idempotency middleware, attestation and verification handlers), `services/gateway`. Registration, binding and credential issuance pending |
-| 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` (checkpoints, receipts, witness co-signing) |
-| 6–12 | ⬜ | Policy engine, contracts, frontend, SDKs, demo, security, deployment |
+| 2 Protocol | ✅ | 10 JSON Schemas with 41 examples, 3 JSON-LD contexts, OpenAPI 3.1 (24 paths), 12 published vector sets, `uai-conformance` |
+| 3 Data | ✅ | PostgreSQL schema, 36 tables, integrity guards, 83 executable invariant assertions |
+| 4 Backend core | ✅ | `internal/store`, `internal/api`, `services/gateway`. Register → bind → attest runs as a test, not a claim |
+| 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` |
+| 6 Policy engine | ✅ | `pkg/policy` (dependency-free bundle verification), `internal/pdp` (embedded OPA), the 3-of-5 signed GASC bundle, signed decision records |
+| 7 Blockchain | ✅ | 7 contracts with Foundry fuzzing, `internal/translog` (log, SCITT receipts, witness co-signing), `internal/chain`, `services/ledger-writer` |
+| 8 Frontend | ✅ | Six surfaces in `web/`, one origin with a strict CSP, and a verify page that verifies in the browser rather than rendering our verdict |
+| 9 SDK | ✅ | `sdk/go`, `sdk/python`, `sdk/typescript`, `mcp/` with the 8 tools of §22.9 |
+| 10–12 | ⬜ | Demo, security validation, deployment |
 
 Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
 anything else could be built. Phase 2 has since closed that gap: the crypto core is checked
@@ -67,7 +71,7 @@ whether evidence is genuine, and every dependency there is supply-chain surface.
 that rule rather than leaving it to discipline.
 
 ```bash
-make conformance     # 125 checks: vectors, schemas, OpenAPI
+make conformance     # 157 checks: vectors, schemas, OpenAPI
 make vectors-check   # fails if regenerating the vectors would change them
 ```
 
@@ -258,6 +262,72 @@ make test-web   # runs the BROWSER code against spec/test-vectors/
 The last one is the point: the frontend is held to the same standard as every other
 implementation. If it verified proofs its own way, it would give visitors a confident answer to
 a different question.
+
+### The SDK cannot make an agent accountable
+
+Everything else in UAI is built assuming the agent may be adversarial. The SDKs run *inside* the
+agent's process, so they inherit none of that protection: an agent that does not want to be
+accountable simply does not import them. That is not a gap to close — it is why the protocol puts
+verification in the relying party.
+
+What an SDK can do is make the accountable path the easy one. So the unit of work is a scope, not
+two calls:
+
+```python
+with agent.action(capability="route.optimize", purpose="delivery_optimization",
+                  jurisdiction=Jurisdiction(origin="AR", targets=("DE",),
+                                            basis="resource_location"),
+                  input=order) as act:
+    act.output = optimize(order)
+```
+
+Three things follow from `with` that would not follow from `evaluate()` and `attest()`:
+
+**The block does not run when the guardrail refuses.** `__enter__` evaluates first, and `DENY`,
+`QUARANTINE` and `REQUIRE_HUMAN_APPROVAL` all raise. The last one is a refusal until a human
+acts; treating it as a conditional yes is how a human-in-the-loop requirement becomes a log line.
+
+**Something is attested on every way out** — return, exception, and refusal. An SDK that left the
+second call to the integrator would produce a record of successes, because the failure paths are
+the ones nobody writes it on. A record that contains only successes is an advertisement.
+
+**Content never leaves the process.** Inputs and outputs are committed locally with a fresh
+random salt; only `sha256:…` is sent. The salts come back to the caller, because a commitment
+whose salt nobody kept can never be opened by anyone — which is the same as not having recorded
+anything.
+
+### No MCP tool grants capabilities
+
+`uai-mcp` serves the eight tools of §22.9 under one agent identity. An MCP server holds that
+identity's key, so a tool that could widen its privileges would be a confused-deputy generator
+(T-11/T-13). `uai_request_capability` creates a **pending request**, and that rule is kept in
+three places that would each have to fail together: no tool grants, no API route grants, and the
+database refuses a grant whose grantor is the agent itself.
+
+The only path to a grant is [`tools/uai-grant`](tools/uai-grant), which needs the owner's signing
+key. It is deliberately not part of the API — a route that did this would be a route an agent
+could reach.
+
+### Three languages, one set of vectors
+
+Each SDK reimplements RFC 8785 canonicalization and RFC 9421 message signatures in its own
+language, because the alternative on this path is dependencies that can sign on the agent's
+behalf ([ADR-0004](docs/adr/0004-sdk-dependency-posture.md)). The Python SDK has one dependency;
+the TypeScript SDK has none and no build step; the Go SDK adds nothing to `pkg/`.
+
+The cost of that is three implementations that can drift, and it is paid with tests rather than
+accepted: all three reproduce the **same committed vectors**, byte for byte.
+
+```bash
+make test-sdk    # Python and TypeScript, against spec/test-vectors/
+```
+
+Writing them found two defects that reading the code had not. §10.4 says a signature covers
+"jcs-canonicalize A minus signature", and the Go implementation was *blanking* the member instead
+of removing it — emitting four empty strings into the signed bytes that no reader of the spec
+would know to add. And `POST /v1/policy/evaluate` took the agent's passport **from the request
+body**: sending `{"passport":{"state":"VALID","allowed_jurisdictions":["KP"]}}` turned a `DENY`
+into an `ALLOW`. Both now have committed vectors or negative tests; the second has both.
 
 ## Design priorities
 

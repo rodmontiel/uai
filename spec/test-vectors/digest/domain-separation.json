@@ -94,6 +94,27 @@
       "payload_utf8": "{\"a\":1}",
       "signing_input_hex": "5541492d76313a706f6c6963792d62756e646c65007b2261223a317d",
       "digest": "sha256:5489661a0ea096c606598b8752f24d8f9431b05e3bc466ba092c282616aa7b98"
+    },
+    {
+      "name": "domain UAI-v1:capability-request",
+      "domain": "UAI-v1:capability-request",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a6361706162696c6974792d72657175657374007b2261223a317d",
+      "digest": "sha256:3de0ffa076ba4194b4d35b4161665c93c04d56e96075f1d742df2ca23ac1a63c"
+    },
+    {
+      "name": "domain UAI-v1:suspicion",
+      "domain": "UAI-v1:suspicion",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a737573706963696f6e007b2261223a317d",
+      "digest": "sha256:076e8efefac7932d88da6a32cad5c9612808cb7b36ab176c6994b7302f162fe1"
+    },
+    {
+      "name": "domain UAI-v1:passport",
+      "domain": "UAI-v1:passport",
+      "payload_utf8": "{\"a\":1}",
+      "signing_input_hex": "5541492d76313a70617373706f7274007b2261223a317d",
+      "digest": "sha256:393731fd8d5414a66bdef84633e723ba49656b2a5821addf5ae97847877886ba"
     }
   ]
 }

@@ -30,10 +30,10 @@ Spec v0.1 completo en `docs/protocol/` (26 secciones). El numerado de fases sigu
 `docs/protocol/19-roadmap.md` al pie de la letra: una fase es ✅ solo cuando su entregable
 declarado existe en el repo.
 
-- **Fase 2 ✅** — 10 JSON Schemas con 40 ejemplos, 3 contextos JSON-LD, OpenAPI 3.1 (21 paths),
-  9 sets de vectores normativos y `tools/uai-conformance` (125 chequeos).
-- **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + 35 invariantes ejecutables
-  (`test/invariants/invariants.sql`; hoy 47).
+- **Fase 2 ✅** — 10 JSON Schemas con 41 ejemplos, 3 contextos JSON-LD, OpenAPI 3.1 (24 paths),
+  12 sets de vectores normativos y `tools/uai-conformance` (157 chequeos).
+- **Fase 3 ✅** — schema PostgreSQL (`db/migrations/`) + invariantes ejecutables
+  (`test/invariants/invariants.sql`; hoy 83).
 - **Fase 5 ✅** — `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (PoP RFC 9421),
   `pkg/keys` (rotación, compromiso, validez al momento del evento), `pkg/receipt`
   (checkpoints, receipts, co-firma de witnesses).
@@ -82,10 +82,31 @@ declarado existe en el repo.
   "¿está bien esto?" y renderiza la respuesta es nuestra opinión con mejor tipografía. `test/web`
   corre el código del navegador contra los **mismos vectores commiteados** que la implementación
   en Go.
-- Fases 9–12: sin empezar.
+- **Fase 9 ✅** — SDKs. `sdk/go` (cliente de los servicios y de `uai-mcp`), `sdk/python`
+  (una dependencia: `cryptography`), `sdk/typescript` (cero dependencias, sin build step) y
+  `mcp/` con las 8 herramientas de §22.9.
+
+  **El SDK no puede hacer que un agente sea responsable.** Un agente que no quiere serlo no lo
+  importa. Lo que hace es que el camino responsable sea el fácil: `with agent.action(...)`
+  atestigua **a la salida, siempre** — éxito, excepción y negativa incluidas. Un SDK que
+  expusiera `evaluate()` y `attest()` por separado produciría un registro de éxitos, porque los
+  caminos de falla son en los que nadie escribe la segunda llamada.
+
+  **Ninguna herramienta MCP otorga capacidades** (§22.9). La regla se sostiene en tres lugares
+  que tendrían que fallar juntos: ninguna herramienta la otorga, ninguna ruta de la API la
+  otorga, y la base de datos rechaza un grant firmado por el propio agente (migración 0006).
+  `tools/uai-grant` es la única vía, y necesita la clave del owner.
+
+  **Tres implementaciones de RFC 8785 y RFC 9421** (ADR-0004). El precio se paga con tests: las
+  tres reproducen **los mismos vectores commiteados**, incluido el nuevo
+  `attestation/signing-payload.json`.
+
+  Corrió en vivo: registro → bind → passport → acciones desde los tres clientes sobre la misma
+  cadena, sin un solo eslabón roto.
+- Fases 10–12: sin empezar.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
-`-race` más las 35 aserciones de invariantes.
+`-race` más las 83 aserciones de invariantes.
 
 `make check` corre todo: build, lint, tests, conformance y reproducibilidad de vectores.
 
@@ -140,3 +161,14 @@ autores angostó el protocolo sin decirlo.
 17. **Una credencial tiene que valer sin nosotros.** Si validarla exige preguntarle algo a UAI,
     es una respuesta de API con pasos extra, y devuelve el uptime y la honestidad de UAI a la
     ecuación de confianza que el protocolo existe para sacarlas.
+18. **Lo que se firma es el documento MENOS su firma, no con la firma en blanco.** §10.4 dice
+    "jcs-canonicalize A minus signature". Blanquear un struct deja
+    `{"alg":"","domain":"","kid":"","value":""}` en los bytes firmados: cuatro strings vacíos
+    que nadie que lea la spec agregaría. Lo encontró el SDK de Python, no una revisión.
+19. **Nada que el llamador escriba puede ampliar su propia autorización.** El PDP leía
+    `passport` del body: un agente mandaba `{"state":"VALID","allowed_jurisdictions":["KP"]}` y
+    un DENY se volvía ALLOW. El passport se lee del registro. `harm_assessment` sí viene del
+    body, y es seguro en una sola dirección: solo puede endurecer la respuesta.
+20. **Correr el código contra un gateway real encuentra lo que leerlo no.** Las dos fallas
+    peores de esta fase (18 y 19) aparecieron en el primer `quickstart.py` en vivo, no en los
+    tests que ya estaban en verde.

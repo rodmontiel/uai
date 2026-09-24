@@ -654,4 +654,56 @@ BEGIN
     RAISE NOTICE 'PASS  LOG  a checkpoint can be anchored exactly once';
 END $$;
 
+-- ── capability requests: an agent cannot widen its own authority ────────────
+--
+-- Section 22.9 states the rule as "no MCP tool grants capabilities". A rule that
+-- lives only in a handler is a rule an attacker who reached the process gets to
+-- influence, so it is written in the schema: a request and a grant are different
+-- tables, and the grant refuses a grantor that is not a party answering for the
+-- agent.
+
+INSERT INTO capabilities (name, description, risk, min_assurance, source_bundle)
+VALUES ('payments.transfer', 'Move money', 'CRITICAL', 'UAI-AL3', 'GASC-2027.4')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO capability_requests (id, agent_id, owner_id, capability, justification,
+                                 requested_by_did, expires_at)
+VALUES ('capreq-1', 'ag-1', 'own-1', 'payments.transfer', 'issue refunds',
+        'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', now() + interval '30 days');
+
+SELECT assert_fails('T-11', 'an agent cannot grant itself a capability', $$
+    INSERT INTO capability_grants (id, agent_id, capability, granted_by_did)
+    VALUES ('grant-self', 'ag-1', 'payments.transfer',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM')$$);
+
+SELECT assert_fails('T-11', 'a stranger cannot grant a capability', $$
+    INSERT INTO capability_grants (id, agent_id, capability, granted_by_did)
+    VALUES ('grant-stranger', 'ag-1', 'payments.transfer',
+            'did:uai:owner:01JY8R9ZB00000000000000001')$$);
+
+-- Asking twice in a loop is a social attack on a human approver. The database
+-- refuses to host it rather than leaving the rate limit as the only defence.
+SELECT assert_fails('T-11', 'one open request per capability', $$
+    INSERT INTO capability_requests (id, agent_id, owner_id, capability, justification,
+                                     requested_by_did, expires_at)
+    VALUES ('capreq-2', 'ag-1', 'own-1', 'payments.transfer', 'again',
+            'did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM', now() + interval '30 days')$$);
+
+-- A decided request must say who decided and carry their signature. A state
+-- change with no attributable decider is a grant nobody made.
+SELECT assert_fails('T-11', 'an approval must name a decider and a signature', $$
+    UPDATE capability_requests SET state = 'APPROVED' WHERE id = 'capreq-1'$$);
+
+-- The owner CAN grant. Without this, the tests above would pass for a schema
+-- that simply refuses every grant, which is not the invariant.
+DO $$
+BEGIN
+    INSERT INTO capability_grants (id, agent_id, capability, granted_by_did)
+    VALUES ('grant-owner', 'ag-1', 'payments.transfer',
+            'did:uai:owner:01JY8R9ZB00000000000000000');
+    RAISE NOTICE 'PASS  T-11  the owner can grant a capability';
+EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL  T-11  the owner could not grant a capability: %', SQLERRM;
+END $$;
+
 ROLLBACK;

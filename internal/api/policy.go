@@ -27,8 +27,12 @@ type EvaluateRequest struct {
 		CrossBorder bool     `json:"cross_border"`
 		Basis       string   `json:"basis,omitempty"`
 	} `json:"jurisdiction"`
+	// HarmAssessment is the agent's own assessment of what the action could
+	// cause. It IS taken from the body, and that is safe in exactly one
+	// direction: every rule that reads it produces a finding, and the
+	// aggregator takes the strictest finding, so declaring harm can only make
+	// the answer stricter. Omitting it never creates a permission.
 	HarmAssessment []map[string]any `json:"harm_assessment,omitempty"`
-	Passport       map[string]any   `json:"passport,omitempty"`
 }
 
 // DecisionRecord is the signed answer (§12.3.1).
@@ -116,8 +120,21 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request) {
 	if len(req.HarmAssessment) > 0 {
 		input["harm_assessment"] = req.HarmAssessment
 	}
-	if req.Passport != nil {
-		input["passport"] = req.Passport
+	// The passport is READ FROM THE REGISTRY, never from the body.
+	//
+	// It was taken from the body once, and a live run showed what that meant:
+	// an agent sent {"passport":{"state":"VALID","allowed_jurisdictions":["KP"]}}
+	// and a DENY for passport_required became an ALLOW. The agent was writing
+	// its own authorization state into the question it was asking. That is
+	// INV-002 at the PDP -- identity and standing come from what the registry
+	// holds, never from a field the caller can write -- and it is the one
+	// substitution the whole guardrail is built to refuse.
+	//
+	// Absent means absent: an agent with no passport gets no passport key in
+	// the input, and §12.4's fail-closed rule then denies the cross-border
+	// action, which is the correct answer.
+	if livePassport := s.passportInput(r.Context(), agent, now); livePassport != nil {
+		input["passport"] = livePassport
 	}
 
 	decision, evalErr := s.bundle.Evaluate(r.Context(), input)
@@ -164,7 +181,12 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request) {
 			"No decision signing key is configured.")
 		return
 	}
-	sig, err := uaicrypto.SignObject(s.issuer, uaicrypto.DomainDecision, unsignedDecision(record))
+	payload, err := record.signingBytes()
+	if err != nil {
+		WriteProblem(w, r, http.StatusInternalServerError, "UAI_INTERNAL", err.Error())
+		return
+	}
+	sig, err := s.issuer.Sign(uaicrypto.DomainDecision, payload)
 	if err != nil {
 		WriteProblem(w, r, http.StatusInternalServerError, "UAI_INTERNAL", err.Error())
 		return
@@ -178,10 +200,14 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, record)
 }
 
-// unsignedDecision is the document the signature covers.
-func unsignedDecision(d DecisionRecord) DecisionRecord {
-	d.Signature = uaicrypto.Signature{}
-	return d
+// signingBytes returns the canonical bytes the signature covers: the record
+// with the signature MEMBER REMOVED, per §10.4.
+//
+// Removed rather than blanked, so an independent verifier reproduces the same
+// bytes from the document it was handed without having to know that this
+// implementation blanks a struct.
+func (d DecisionRecord) signingBytes() ([]byte, error) {
+	return uaicrypto.CanonicalizeWithout(d, "signature")
 }
 
 func (s *Server) storeDecision(r *http.Request, agentID string, d DecisionRecord) error {

@@ -1,0 +1,53 @@
+{
+  "vector_set": "uai-cs-1/jwk-thumbprint",
+  "uai_version": "0.1",
+  "description": "RFC 7638 JWK thumbprints, rendered in the UAI wire form \"sha256:\u003chex\u003e\". The thumbprint is the subject identifier of a registration proof: both halves of the proof sign it, so two implementations that compute it differently do not compose into a proof. This is the one digest in UAI that is NOT domain-separated, because RFC 7638 fixes its input exactly and a prefix would make it a different function under the same name.",
+  "reference": "docs/protocol/04-cryptography.md#72-canonicalization-and-domain-separation",
+  "cases": [
+    {
+      "name": "Ed25519",
+      "jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+      },
+      "canonical_json": "{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}",
+      "thumbprint": "sha256:90facafea9b1556698540f70c0117a22ea37bd5cf3ed3c47093c1707282b4b89"
+    },
+    {
+      "name": "Ed25519 with extra members that are not hashed",
+      "jwk": {
+        "use": "sig",
+        "kid": "ignored",
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        "alg": "EdDSA"
+      },
+      "canonical_json": "{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}",
+      "thumbprint": "sha256:90facafea9b1556698540f70c0117a22ea37bd5cf3ed3c47093c1707282b4b89"
+    },
+    {
+      "name": "P-256",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+        "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+      },
+      "canonical_json": "{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\"}",
+      "thumbprint": "sha256:a0a232c2f194a53553cb1310ddbc0821e414b9d7ebfc290b323084d7d1020fe5"
+    },
+    {
+      "name": "P-384",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-384",
+        "x": "KDwdc2XOR4jyn46_I07f_q1v6Zf76l_6LVjMnfp7HFCLBVJvVbnrsgQPBbSPttDh",
+        "y": "lHXJkGHkG4i6Uu_bjBaQRxph2GfteZcp2cks0B29IlYw2E7eMqePnmRmTNrFEu-M"
+      },
+      "canonical_json": "{\"crv\":\"P-384\",\"kty\":\"EC\",\"x\":\"KDwdc2XOR4jyn46_I07f_q1v6Zf76l_6LVjMnfp7HFCLBVJvVbnrsgQPBbSPttDh\",\"y\":\"lHXJkGHkG4i6Uu_bjBaQRxph2GfteZcp2cks0B29IlYw2E7eMqePnmRmTNrFEu-M\"}",
+      "thumbprint": "sha256:54891c3fb656c62f4e38de47a4a6d0750cef0ff138ac24f0b9cdae55d21fa5f2"
+    }
+  ]
+}

@@ -41,6 +41,25 @@ const (
 	DomainCheckpoint   Domain = "UAI-v1:checkpoint"
 	DomainCommitment   Domain = "UAI-v1:commitment"
 	DomainAudit        Domain = "UAI-v1:audit"
+	// DomainCapabilityRequest covers an agent asking for a capability it does
+	// not hold (§22.9). It is distinct from DomainChallenge because a challenge
+	// response proves control of a key, while a request asks a human to widen
+	// what that key may do: one domain for both would let a binding challenge
+	// signature be presented as a capability request nobody wrote.
+	DomainCapabilityRequest Domain = "UAI-v1:capability-request"
+	// DomainSuspicion covers a signed report that an agent may have caused harm
+	// (§14.1). It is distinct from DomainAttestation because attesting to one's
+	// own action and accusing another party are opposite acts: sharing a domain
+	// would let any attestation an agent ever signed be replayed as an
+	// accusation against someone else.
+	DomainSuspicion Domain = "UAI-v1:suspicion"
+	// DomainPassport covers passport requests and the passport credential's
+	// subject binding (§11). It is distinct from DomainCredential because a
+	// passport is revocable independently of the identity it is attached to:
+	// one domain for both would let a passport proof be presented as an
+	// identity proof, and suspending the first would then read as suspending
+	// the second.
+	DomainPassport Domain = "UAI-v1:passport"
 )
 
 var knownDomains = map[Domain]bool{
@@ -49,6 +68,7 @@ var knownDomains = map[Domain]bool{
 	DomainRegistration: true, DomainPolicyBundle: true,
 	DomainQuarantine: true, DomainRevocation: true, DomainCheckpoint: true,
 	DomainCommitment: true, DomainAudit: true,
+	DomainCapabilityRequest: true, DomainSuspicion: true, DomainPassport: true,
 }
 
 // ErrUnknownDomain is returned for a domain outside the registry. Verifiers

@@ -17,6 +17,15 @@ ISSUER_DID ?= did:web:credentials.uai.world
 POLICY_BUNDLE    ?= policy/gasc-2027.4
 POLICY_AUTHORITY ?= policy/authority.json
 
+## ---------- agent-side (SDKs and the MCP server) ----------
+# These name ONE registered identity. There is no default agent id or key: an
+# SDK that invented one would sign as an identity nobody registered, and the
+# signature would be indistinguishable from a real one until someone went
+# looking for the agent behind it.
+UAI_ENDPOINT  ?= http://127.0.0.1:8080
+UAI_AGENT_ID  ?=
+UAI_AGENT_KEY ?= .keys/agent.jwk
+
 ## ---------- container runtime ----------
 # Rootless Podman is the reference runtime: docs/adr/0001-podman-rootless-runtime.md.
 # Docker remains supported on every target — `make CONTAINER=docker <target>` —
@@ -158,7 +167,7 @@ build: ## Build everything
 	$(GO) build ./...
 
 .PHONY: test
-test: test-web ## Run Go unit tests and the browser verification tests
+test: test-web test-sdk ## Run Go unit tests, the browser tests and the SDK tests
 	$(GO) test ./... -count=1
 
 .PHONY: test-web
@@ -166,6 +175,30 @@ test-web: ## Check the browser verification code against the committed vectors
 	@command -v node >/dev/null 2>&1 || { \
 		echo "node not found; skipping the browser verification tests"; exit 0; }
 	node --test "test/web/**/*.test.mjs"
+
+.PHONY: test-sdk
+test-sdk: test-sdk-python test-sdk-ts ## Run the Python and TypeScript SDK tests
+
+# Each SDK reimplements RFC 8785 and RFC 9421 in its own language (ADR-0004), so
+# each one is held to the SAME committed vectors. That is what keeps three
+# implementations from drifting into three subtly different protocols.
+.PHONY: test-sdk-python
+test-sdk-python: ## Check the Python SDK against the committed vectors
+	@command -v python3 >/dev/null 2>&1 || { \
+		echo "python3 not found; skipping the Python SDK tests"; exit 0; }
+	@python3 -c 'import cryptography' 2>/dev/null || { \
+		echo "python3 cryptography not installed; skipping the Python SDK tests"; exit 0; }
+	cd sdk/python && python3 -m unittest discover -s tests -t . -q
+
+.PHONY: test-sdk-ts
+test-sdk-ts: ## Check the TypeScript SDK against the committed vectors
+	@command -v node >/dev/null 2>&1 || { \
+		echo "node not found; skipping the TypeScript SDK tests"; exit 0; }
+	cd sdk/typescript && node --test "test/**/*.test.mjs"
+
+.PHONY: run-mcp
+run-mcp: ## Serve the 8 MCP tools over stdio as one agent identity
+	$(GO) run ./mcp -endpoint "$(UAI_ENDPOINT)" -uai-id "$(UAI_AGENT_ID)" -key "$(UAI_AGENT_KEY)"
 
 .PHONY: conformance
 conformance: ## Run the normative vectors, schemas and API checks

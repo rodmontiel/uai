@@ -25,8 +25,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/rodmontiel/uai/internal/testvectors"
+	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/merkle"
 	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
@@ -77,12 +80,14 @@ func main() {
 		{"jcs/canonicalization.json", jcsVectors},
 		{"digest/domain-separation.json", digestVectors},
 		{"commitment/salted-commitment.json", commitmentVectors},
+		{"keys/jwk-thumbprint.json", thumbprintVectors},
 		{"merkle/hashing.json", merkleHashVectors},
 		{"merkle/tree-proofs.json", merkleTreeVectors},
 		{"signature/ed25519.json", ed25519Vectors},
 		{"signature/ecdsa.json", ecdsaVectors},
 		{"identifier/uai-id.json", identifierVectors},
 		{"attestation/event-chain.json", chainVectors},
+		{"attestation/signing-payload.json", signingPayloadVectors},
 		{"pop/rfc9421.json", popVectors},
 	}
 
@@ -160,6 +165,7 @@ func digestVectors() (any, error) {
 		uaicrypto.DomainChallenge, uaicrypto.DomainVote, uaicrypto.DomainDecision,
 		uaicrypto.DomainQuarantine, uaicrypto.DomainRevocation, uaicrypto.DomainCheckpoint,
 		uaicrypto.DomainCommitment, uaicrypto.DomainAudit, uaicrypto.DomainRegistration, uaicrypto.DomainPolicyBundle,
+		uaicrypto.DomainCapabilityRequest, uaicrypto.DomainSuspicion, uaicrypto.DomainPassport,
 	}
 	set := testvectors.Set[testvectors.DigestCase]{
 		VectorSet:   "uai-cs-1/digest",
@@ -772,4 +778,145 @@ func quoteOrEmpty(s string) string {
 func fail(err error) {
 	fmt.Fprintf(os.Stderr, "uai-vectors: %v\n", err)
 	os.Exit(1)
+}
+
+// thumbprintVectors pins RFC 7638 thumbprints for the key types UAI accepts.
+//
+// The canonical JSON is included because that is where implementations diverge:
+// RFC 7638 fixes the member set and their order per key type, and a serializer
+// that emits its own field order produces a different thumbprint for the same
+// key. Pinning only the digest would let two implementations disagree about WHY
+// they agree.
+func thumbprintVectors() (any, error) {
+	set := testvectors.Set[testvectors.ThumbprintCase]{
+		VectorSet:  "uai-cs-1/jwk-thumbprint",
+		UAIVersion: "0.1",
+		Description: "RFC 7638 JWK thumbprints, rendered in the UAI wire form \"sha256:<hex>\". " +
+			"The thumbprint is the subject identifier of a registration proof: both halves of the " +
+			"proof sign it, so two implementations that compute it differently do not compose into " +
+			"a proof. This is the one digest in UAI that is NOT domain-separated, because RFC 7638 " +
+			"fixes its input exactly and a prefix would make it a different function under the same name.",
+		Reference: "docs/protocol/04-cryptography.md#72-canonicalization-and-domain-separation",
+	}
+	inputs := []struct {
+		name string
+		raw  string
+	}{
+		{"Ed25519", `{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}`},
+		{"Ed25519 with extra members that are not hashed",
+			`{"use":"sig","kid":"ignored","kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","alg":"EdDSA"}`},
+		{"P-256", `{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}`},
+		{"P-384", `{"kty":"EC","crv":"P-384","x":"KDwdc2XOR4jyn46_I07f_q1v6Zf76l_6LVjMnfp7HFCLBVJvVbnrsgQPBbSPttDh","y":"lHXJkGHkG4i6Uu_bjBaQRxph2GfteZcp2cks0B29IlYw2E7eMqePnmRmTNrFEu-M"}`},
+	}
+	for _, in := range inputs {
+		jwk, err := uaicrypto.ParseJWK([]byte(in.raw))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", in.name, err)
+		}
+		// Loudly, not by skipping. A generator that dropped a case it could not
+		// produce would quietly ship a smaller vector set than the one the
+		// description promises, and the missing key type would be the one
+		// nobody found a disagreement in.
+		tp, err := jwk.ThumbprintString()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", in.name, err)
+		}
+		set.Cases = append(set.Cases, testvectors.ThumbprintCase{
+			Name: in.name, JWK: json.RawMessage(in.raw),
+			CanonicalJSON: uaicrypto.ThumbprintInput(jwk), Thumbprint: tp,
+		})
+	}
+	return set, nil
+}
+
+// signingPayloadVectors pins the bytes a signature over a self-signed object
+// covers.
+//
+// §10.4: "jcs-canonicalize A minus signature". Minus, not blank. The document
+// here is the SIGNED form -- what actually travels -- and the payload is what a
+// verifier must reconstruct from it. An implementation that reconstructs
+// anything else produces signatures only it can check.
+func signingPayloadVectors() (any, error) {
+	set := testvectors.Set[testvectors.SigningPayloadCase]{
+		VectorSet:  "attestation/signing-payload",
+		UAIVersion: "0.1",
+		Description: "What a signature over a self-signed object covers: the document with its " +
+			"\"signature\" member REMOVED, canonicalized per RFC 8785, then domain-separated. " +
+			"The distinction from blanking the member is four empty strings, and an implementation " +
+			"that gets it wrong is byte-correct everywhere else while signing something nobody can " +
+			"verify.",
+		Reference: "docs/protocol/06-action-attestation.md#104-the-event-chain",
+	}
+
+	seed := mustHex("54294285078392269563723994b44bbcd4e41de58bed8d652cd23dc372f9c523")
+	priv := ed25519.NewKeyFromSeed(seed)
+	pub := priv.Public().(ed25519.PublicKey)
+	signer := uaicrypto.NewEd25519Signer(priv, "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1")
+
+	att := attest.Attestation{
+		UAIVersion: "0.1",
+		EventID:    "01JY8RA3C7K2V9M0QW4T6Z8XPD",
+		AgentDID:   "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+		OwnerDID:   "did:uai:owner:01JY8R9ZB00000000000000000",
+		Timestamp:  time.Date(2026, 9, 22, 14, 7, 11, 0, time.UTC),
+		Nonce:      "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
+		Action: attest.Action{
+			Type: "route.optimize", Capability: "route.optimize", RiskClass: "LOW",
+		},
+		Purpose: "delivery_optimization",
+		Jurisdiction: attest.Jurisdiction{
+			Origin: "AR", Targets: []string{"DE"}, CrossBorder: true, Basis: "resource_location",
+		},
+		Policy: attest.Policy{
+			Version: "GASC-2027.4", BundleHash: "sha256:" + strings.Repeat("b", 64),
+			DecisionID: "01JY8RB1Q4X7N2M8V0K3T5S9WE", Decision: "ALLOW",
+		},
+		InputCommitment:   "sha256:" + strings.Repeat("c", 64),
+		OutputCommitment:  "sha256:" + strings.Repeat("d", 64),
+		Outcome:           attest.OutcomeSuccess,
+		PreviousEventHash: "sha256:" + strings.Repeat("a", 64),
+		Sequence:          2,
+	}
+	signed, err := attest.Sign(signer, att)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := signed.SigningBytes()
+	if err != nil {
+		return nil, err
+	}
+	document, err := json.Marshal(signed)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(payload)
+	set.Cases = append(set.Cases, testvectors.SigningPayloadCase{
+		Name: "action attestation", Document: document,
+		Payload: string(payload), PayloadSHA: hex.EncodeToString(sum[:]),
+		Domain:  string(uaicrypto.DomainAttestation),
+		SeedHex: hex.EncodeToString(seed), PublicHex: hex.EncodeToString(pub),
+		Signature: signed.Signature.Value, MustVerify: true,
+	})
+
+	// The negative case: the payload a naive implementation produces by blanking
+	// the member instead of removing it. Pinned so the difference is visible as
+	// a vector rather than discovered as a verification failure in production.
+	var blanked map[string]any
+	if err := json.Unmarshal(document, &blanked); err != nil {
+		return nil, err
+	}
+	blanked["signature"] = map[string]string{"alg": "", "kid": "", "domain": "", "value": ""}
+	wrong, err := uaicrypto.Canonicalize(blanked)
+	if err != nil {
+		return nil, err
+	}
+	wrongSum := sha256.Sum256(wrong)
+	set.Cases = append(set.Cases, testvectors.SigningPayloadCase{
+		Name:     "the same attestation with the signature member BLANKED instead of removed",
+		Document: document, Payload: string(wrong), PayloadSHA: hex.EncodeToString(wrongSum[:]),
+		Domain:  string(uaicrypto.DomainAttestation),
+		SeedHex: hex.EncodeToString(seed), PublicHex: hex.EncodeToString(pub),
+		Signature: signed.Signature.Value, MustVerify: false,
+	})
+	return set, nil
 }

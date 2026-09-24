@@ -152,6 +152,46 @@ func (s *Server) Routes() http.Handler {
 		RequirePoP(s.db, uaicrypto.DomainDecision, s.scheme),
 	))
 
+	// Passports (§11). The request is signed by the agent, and that is not a
+	// self-grant: a passport scopes WHERE a capability may be used, never WHAT
+	// the agent may do, and the handler refuses any capability the owner has
+	// not already granted. The decision about WHERE is the PDP's.
+	mux.Handle("POST /v1/passports/request", Chain(
+		http.HandlerFunc(s.requestPassport),
+		CaptureBody,
+		RequirePoP(s.db, uaicrypto.DomainPassport, s.scheme),
+		RequireIdempotency(s.db, "POST /v1/passports/request"),
+	))
+	// The check is public for the same reason /verify is: it answers a question
+	// a relying party asks about an agent it is considering dealing with, and an
+	// answer only that agent could obtain would be useless to the party who
+	// needs it.
+	mux.Handle("GET /v1/passports/check", Chain(http.HandlerFunc(s.checkPassport), CaptureBody))
+	mux.Handle("GET /v1/passports/{id}", Chain(http.HandlerFunc(s.getPassport), CaptureBody))
+
+	// Asking for a capability. Behind proof of possession, and behind nothing
+	// else: §22.9's rule that no tool grants capabilities is kept by there
+	// being no route here that writes a grant, not by this handler declining
+	// to. The database refuses one signed by the agent itself as well.
+	mux.Handle("POST /v1/capability-requests", Chain(
+		http.HandlerFunc(s.requestCapability),
+		CaptureBody,
+		RequirePoP(s.db, uaicrypto.DomainCapabilityRequest, s.scheme),
+		RequireIdempotency(s.db, "POST /v1/capability-requests"),
+	))
+	mux.Handle("GET /v1/agents/{id}/capability-requests",
+		Chain(http.HandlerFunc(s.listCapabilityRequests), CaptureBody))
+
+	// Reporting harm. Signed, never anonymous: §14 treats an accusation as a
+	// consequential act, and an anonymous path here would turn the quarantine
+	// machinery into a free denial-of-service tool against any identity (T-24).
+	mux.Handle("POST /v1/suspicions", Chain(
+		http.HandlerFunc(s.fileSuspicion),
+		CaptureBody,
+		RequirePoP(s.db, uaicrypto.DomainSuspicion, s.scheme),
+		RequireIdempotency(s.db, "POST /v1/suspicions"),
+	))
+
 	// Public, read-only surfaces. Unauthenticated for the same reason /verify
 	// is: an accountability record nobody can read is not accountability.
 	mux.Handle("GET /v1/quarantines", Chain(http.HandlerFunc(s.listQuarantines), CaptureBody))

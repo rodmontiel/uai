@@ -35,7 +35,7 @@
   "signature": {
     "alg": "EdDSA",
     "kid": "did:web:monitor.acme-robotics.example#key-1",
-    "domain": "UAI-v1:quarantine",
+    "domain": "UAI-v1:suspicion",
     "value": "zSigAbc"
   }
 }

@@ -33,10 +33,22 @@ func evalRequest(capability string) api.EvaluateRequest {
 	return r
 }
 
+// grant records a capability grant, as the agent's actual owner.
+//
+// The owner DID is looked up rather than invented, because the database now
+// refuses a grant from any party that does not answer for the agent (migration
+// 0006). An earlier version of this helper passed a fresh random owner DID and
+// the tests passed, which meant they were asserting against a grant no real
+// owner had made.
 func (e *env) grant(t *testing.T, capability string) {
 	t.Helper()
-	if err := e.db.GrantCapability(context.Background(), "grant-"+ulid("G"), e.agent.ID,
-		capability, "did:uai:owner:"+ulid("W"), time.Now().Add(-time.Hour), nil); err != nil {
+	ctx := context.Background()
+	owner, err := e.db.OwnerByID(ctx, e.ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.GrantCapability(ctx, "grant-"+ulid("G"), e.agent.ID,
+		capability, owner.DID, time.Now().Add(-time.Hour), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -76,15 +88,27 @@ func TestEveryDecisionNamesItsPolicy(t *testing.T) {
 			}
 
 			// The record is signed, and the signature covers the decision.
-			unsigned := d
-			unsigned.Signature = uaicrypto.Signature{}
-			if err := uaicrypto.VerifyObject(e.pdpPub, uaicrypto.DomainDecision, unsigned, d.Signature); err != nil {
+			//
+			// Verified the way an independent party would: from the document as
+			// received, with the signature MEMBER REMOVED (§10.4). A test that
+			// blanked the member instead would verify against bytes only this
+			// implementation produces, and would keep passing if the payload
+			// construction drifted away from the spec.
+			payload, err := uaicrypto.CanonicalizeWithout(d, "signature")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := uaicrypto.Verify(e.pdpPub, uaicrypto.DomainDecision, payload, d.Signature); err != nil {
 				t.Fatalf("decision signature must verify: %v", err)
 			}
-			tampered := unsigned
+			tampered := d
 			tampered.Decision = "ALLOW"
 			tampered.Policy.BundleHash = "sha256:" + nonce() + nonce()
-			if err := uaicrypto.VerifyObject(e.pdpPub, uaicrypto.DomainDecision, tampered, d.Signature); err == nil {
+			tamperedPayload, err := uaicrypto.CanonicalizeWithout(tampered, "signature")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := uaicrypto.Verify(e.pdpPub, uaicrypto.DomainDecision, tamperedPayload, d.Signature); err == nil {
 				t.Error("the policy reference is not covered by the decision signature")
 			}
 

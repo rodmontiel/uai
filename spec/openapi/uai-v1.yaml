@@ -332,6 +332,134 @@ paths:
               schema: { $ref: '#/components/schemas/AgentPassportCredential' }
         '404': { $ref: '#/components/responses/Problem' }
 
+  /passports/check:
+    get:
+      tags: [passport]
+      operationId: checkPassport
+      summary: Run the passport checklist for a capability and a jurisdiction set
+      description: |
+        The 11.6 checklist, answered for anyone who asks. A GET because it changes nothing,
+        and unauthenticated because the party who needs this answer is the one being dealt
+        with: an answer only the agent itself could obtain would be useless to them.
+
+        A passport in scope does NOT authorize an action. The guardrail still evaluates it.
+        `code` is `UAI_PASSPORT_REQUIRED` when the agent has no passport at all, which is a
+        different fact from a passport that refuses and must not be rendered as one.
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          description: The UAI-ID being checked
+          schema: { type: string }
+        - name: capability
+          in: query
+          required: true
+          schema: { type: string }
+        - name: targets
+          in: query
+          required: true
+          description: Comma-separated ISO 3166-1 alpha-2 codes
+          schema: { type: string }
+        - name: risk_class
+          in: query
+          schema: { enum: [INFORMATIONAL, LOW, MODERATE, HIGH, CRITICAL] }
+      responses:
+        '200':
+          description: Check result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [subject, capability, effect, allowed, reason, note]
+                properties:
+                  subject: { type: string }
+                  capability: { type: string }
+                  targets: { type: array, items: { type: string } }
+                  effect:
+                    enum: [ALLOW, ALLOW_WITH_MONITORING, REQUIRE_HUMAN_APPROVAL, DENY]
+                  allowed: { type: boolean }
+                  code: { type: string, description: A UAI_* code when the effect is DENY }
+                  reason: { type: string }
+                  passport_id: { type: string }
+                  state_at_decision: { type: string }
+                  credential_hash: { type: string }
+                  policy_version: { type: string }
+                  note: { type: string }
+
+  /capability-requests:
+    post:
+      tags: [action]
+      operationId: requestCapability
+      summary: Request a capability the agent does not hold
+      description: |
+        Creates a PENDING request and nothing else. It does not grant, and it cannot be made
+        to: approval is an act by the human owner, out of band. There is no route in this API
+        that writes a capability grant, and the database refuses one signed by the agent
+        itself (22.9, T-11/T-13).
+
+        Requires an RFC 9421 signature tagged `UAI-v1:capability-request`. One open request per
+        (agent, capability): re-asking in a loop until an owner approves out of fatigue is a
+        social attack on a human, and it is refused with 409.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability, justification]
+              properties:
+                capability: { type: string }
+                justification:
+                  type: string
+                  description: |
+                    What it is for, in terms the owner can decide on. Required: without it they
+                    would be approving a capability name.
+                purpose: { type: string }
+                resource: { type: string }
+      responses:
+        '202':
+          description: Request recorded, pending the owner's decision
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request_id, capability, state, granted, note]
+                properties:
+                  request_id: { type: string }
+                  capability: { type: string }
+                  state: { enum: [PENDING] }
+                  granted:
+                    type: boolean
+                    enum: [false]
+                    description: Always false. Present so a caller reading this sees the answer.
+                  requested_at: { type: string, format: date-time }
+                  expires_at: { type: string, format: date-time }
+                  note: { type: string }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /agents/{id}/capability-requests:
+    get:
+      tags: [action]
+      operationId: listCapabilityRequests
+      summary: An agent's capability requests
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent: { type: string }
+                  requests: { type: array, items: { type: object } }
+
   /policy/evaluate:
     post:
       tags: [action]
@@ -421,15 +549,28 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/HarmSuspicion' }
       responses:
-        '201':
-          description: Recorded
+        '202':
+          description: |
+            Received. 202 rather than 201, because filing a report creates an investigation to
+            be triaged, not a finding: `state` is RECEIVED and there is no field in which a
+            verdict could appear.
           content:
             application/json:
               schema:
                 type: object
+                required: [suspicion_id, subject, state, note]
                 properties:
                   suspicion_id: { type: string }
-                  merged_into: { type: string }
+                  subject: { type: string }
+                  state: { enum: [RECEIVED] }
+                  distinct_reporters:
+                    type: integer
+                    description: |
+                      How many DISTINCT reporters have filed the same conduct. Reports sharing a
+                      dedup key are one report with several reporters, so one adversary cannot
+                      manufacture corroboration from many identities.
+                  note: { type: string }
+        '401': { $ref: '#/components/responses/Problem' }
         '429': { $ref: '#/components/responses/Problem' }
 
   /cases/{id}:

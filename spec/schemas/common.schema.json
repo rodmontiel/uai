@@ -92,7 +92,10 @@
         "UAI-v1:revocation",
         "UAI-v1:checkpoint",
         "UAI-v1:commitment",
-        "UAI-v1:audit"
+        "UAI-v1:audit",
+        "UAI-v1:capability-request",
+        "UAI-v1:suspicion",
+        "UAI-v1:passport"
       ],
       "description": "Domain separation string. A verifier MUST reject a signature whose domain does not match the context it is being verified in, even when the signature is otherwise valid."
     },

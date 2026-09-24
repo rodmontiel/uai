@@ -37,7 +37,11 @@ type Binding struct {
 	UAIID     string `json:"uai_id"`
 	Audience  string `json:"audience"`
 	// Bind only.
-	SpiffeID     string `json:"spiffe_id,omitempty"`
+	// The JSON name is svid_spiffe_id, matching §9.1 and the request body. It
+	// was "spiffe_id" until the SDKs were written against the spec and produced
+	// a canonical form this verifier rejected: one name, in one place, is the
+	// only version of this that two implementations can both get right.
+	SpiffeID     string `json:"svid_spiffe_id,omitempty"`
 	SVIDCertHash string `json:"svid_cert_hash,omitempty"`
 	ImageDigest  string `json:"image_digest,omitempty"`
 	// Unbind only. A reason is recorded, never required to be true: an agent
@@ -70,7 +74,7 @@ func (b Binding) Validate() error {
 		// A bind with no runtime records who, but not where. That is the half
 		// of the claim the operation exists to establish.
 		if b.SpiffeID == "" || b.SVIDCertHash == "" {
-			return fmt.Errorf("%w: a bind must name the runtime it binds (spiffe_id, svid_cert_hash)", ErrIncomplete)
+			return fmt.Errorf("%w: a bind must name the runtime it binds (svid_spiffe_id, svid_cert_hash)", ErrIncomplete)
 		}
 	case OpRebind:
 		if b.PreviousEventHash == "" {

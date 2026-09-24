@@ -107,16 +107,14 @@ var (
 	ErrPassportUnrecorded = errors.New("attest: passport required but its state at decision time is absent")
 )
 
-// unsigned returns a copy with the signature cleared, which is what gets
-// canonicalized and signed.
-func (a Attestation) unsigned() Attestation {
-	a.Signature = uaicrypto.Signature{}
-	return a
-}
-
-// SigningBytes returns the canonical bytes covered by the signature.
+// SigningBytes returns the canonical bytes covered by the signature: §10.4's
+// "jcs-canonicalize A minus signature".
+//
+// The member is REMOVED, not blanked. An implementation that blanked it would
+// hash four empty strings nobody else knows to add, and its attestations would
+// verify only against itself.
 func (a Attestation) SigningBytes() ([]byte, error) {
-	return uaicrypto.Canonicalize(a.unsigned())
+	return uaicrypto.CanonicalizeWithout(a, "signature")
 }
 
 // Hash returns the event hash: the domain-separated digest of the SIGNED

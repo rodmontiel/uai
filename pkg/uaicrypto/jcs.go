@@ -33,6 +33,31 @@ func Canonicalize(v any) ([]byte, error) {
 	return CanonicalizeJSON(raw)
 }
 
+// CanonicalizeWithout returns the canonical form of v with the named top-level
+// members REMOVED, which is how every self-signed object in UAI is signed:
+// §10.4 says "jcs-canonicalize A minus signature".
+//
+// Removed, not zeroed. Zeroing a Go struct member produces
+// {"alg":"","domain":"","kid":"","value":""} in the signed bytes -- four empty
+// strings that mean nothing and that no implementation reading the spec would
+// know to add. It cost a working Python SDK a signature that verified nowhere,
+// which is exactly how this class of bug is found: late, in another language,
+// by someone who followed the document.
+func CanonicalizeWithout(v any, members ...string) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("uaicrypto: marshal: %w", err)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, fmt.Errorf("%w: only JSON objects have members to remove", ErrNotCanonicalizable)
+	}
+	for _, m := range members {
+		delete(object, m)
+	}
+	return Canonicalize(object)
+}
+
 // CanonicalizeJSON returns the RFC 8785 canonical form of an existing JSON
 // document. Numbers are re-serialized using the ECMAScript Number::toString
 // algorithm, object members are sorted by the UTF-16 code units of their names,

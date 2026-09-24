@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rodmontiel/uai/pkg/challenge"
+	"github.com/rodmontiel/uai/pkg/passport"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
@@ -148,4 +149,39 @@ func New(credType, id, issuer string, subjectDoc any, from time.Time, until *tim
 		ValidUntil:        until,
 		CredentialSubject: raw,
 	}, nil
+}
+
+// PassportSubject is the credentialSubject of an AgentPassportCredential
+// (§11.3).
+//
+// It answers "where this agent may act", never "who this agent is". The two are
+// separate documents because they have separate lifetimes: suspending a
+// passport must leave the identity and its history untouched (§11.1).
+//
+// RestrictedJurisdictions is carried explicitly rather than implied by omission
+// from the allowed list. "Not listed as allowed" and "explicitly restricted"
+// are different facts, and the second is the one an auditor asks about.
+type PassportSubject struct {
+	ID                      string                          `json:"id"`
+	Owner                   string                          `json:"owner"`
+	AllowedJurisdictions    []string                        `json:"allowedJurisdictions"`
+	RestrictedJurisdictions []string                        `json:"restrictedJurisdictions"`
+	AuthorizedCapabilities  []passport.AuthorizedCapability `json:"authorizedCapabilities"`
+	AssuranceLevel          string                          `json:"assuranceLevel"`
+	PolicyVersion           string                          `json:"policyVersion"`
+	PolicyBundleHash        string                          `json:"policyBundleHash"`
+	// DecisionID names the policy decision that authorized issuance. §11.5 puts
+	// the PDP in the decision seat, so a passport that could not say which
+	// evaluation produced it would be an authorization with no basis on record.
+	DecisionID string `json:"decisionId"`
+	State      string `json:"state"`
+}
+
+// PassportFrom extracts the passport subject.
+func PassportFrom(c Credential) (PassportSubject, error) {
+	var s PassportSubject
+	if err := json.Unmarshal(c.CredentialSubject, &s); err != nil {
+		return PassportSubject{}, fmt.Errorf("credential: passport subject: %w", err)
+	}
+	return s, nil
 }

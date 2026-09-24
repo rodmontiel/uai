@@ -168,13 +168,18 @@ The PDP performs, for every action where `cross_border = true`:
 2. signature valid, issuer trusted?           else -> DENY (UAI_PASSPORT_INVALID)
 3. now within [validFrom, validUntil]?        else -> DENY (UAI_PASSPORT_EXPIRED)
 4. status list says not revoked/suspended?    else -> DENY (UAI_PASSPORT_SUSPENDED)
-5. every target ∈ allowedJurisdictions?       else -> DENY (UAI_JURISDICTION_NOT_ALLOWED)
-6. no target ∈ restrictedJurisdictions?       else -> DENY (UAI_JURISDICTION_RESTRICTED)
+5. no target ∈ restrictedJurisdictions?       else -> DENY (UAI_JURISDICTION_RESTRICTED)
+6. every target ∈ allowedJurisdictions?       else -> DENY (UAI_JURISDICTION_NOT_ALLOWED)
 7. capability ∈ authorizedCapabilities?       else -> DENY (UAI_CAPABILITY_NOT_IN_PASSPORT)
 8. agent assurance >= minAssurance?           else -> DENY (UAI_ASSURANCE_INSUFFICIENT)
 9. constraints satisfied (rate, approval)?    else -> REQUIRE_HUMAN_APPROVAL
 => ALLOW / ALLOW_WITH_MONITORING
 ```
+
+Steps 5 and 6 are in this order because both deny and only the reported reason differs: when a
+target is both unlisted and explicitly restricted, the restricted fact is the one an auditor
+cares about ([11.3](#113-agentpassportcredential)), and reporting the weaker reason would hide
+it.
 
 This check is **fail-closed** without exception. If the passport service is unavailable, a
 cross-border action is denied — an accountability system that degrades into permissiveness

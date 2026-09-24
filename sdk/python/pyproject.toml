@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uai-sdk"
+version = "0.1.0"
+description = "Universal Agent Identity: cryptographically verifiable identity and accountability for autonomous agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "../../LICENSE" }
+keywords = ["agent", "identity", "attestation", "accountability", "rfc9421", "verifiable-credentials"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security :: Cryptography",
+]
+
+# One dependency, and it is the one Python cannot supply.  There is no
+# asymmetric cryptography in the standard library, and the alternative -- a
+# pure-Python Ed25519 -- would be a timing-attack surface wrapped around the
+# agent's signing key.  Everything else here, including RFC 8785
+# canonicalization and HTTP, is stdlib: this package is on the verification path
+# and every dependency on it is supply-chain surface (T-07).
+dependencies = ["cryptography>=41.0"]
+
+[project.urls]
+Homepage = "https://uai.world"
+Source = "https://github.com/rodmontiel/uai"
+
+[tool.setuptools.packages.find]
+include = ["uai*"]
+
+[tool.setuptools.package-data]
+uai = ["py.typed"]

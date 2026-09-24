@@ -18,6 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -62,8 +63,8 @@ func (r Result) OK() bool { return r.LoadError == nil && len(r.Failures()) == 0 
 // All runs every vector set.
 func All() []Result {
 	return []Result{
-		JCS(), Digest(), Commitment(), MerkleHashing(), MerkleProofs(),
-		Ed25519(), ECDSA(), Identifiers(), EventChain(), PoP(),
+		JCS(), Digest(), Commitment(), Thumbprint(), MerkleHashing(), MerkleProofs(),
+		Ed25519(), ECDSA(), Identifiers(), EventChain(), SigningPayload(), PoP(),
 	}
 }
 
@@ -72,7 +73,10 @@ func PoPSets() []Result { return []Result{PoP()} }
 
 // CryptoSets runs the sets that pkg/uaicrypto is responsible for.
 func CryptoSets() []Result {
-	return []Result{JCS(), Digest(), Commitment(), Ed25519(), ECDSA(), EventChain()}
+	return []Result{
+		JCS(), Digest(), Commitment(), Thumbprint(), Ed25519(), ECDSA(), EventChain(),
+		SigningPayload(),
+	}
 }
 
 // MerkleSets runs the sets that pkg/merkle is responsible for.
@@ -180,6 +184,98 @@ func Commitment() Result {
 		}
 		if opens := uaicrypto.VerifyCommitment(commitment, salt, []byte(c.ContentUTF8)); opens != c.Opens {
 			r.Cases = append(r.Cases, fail(c.Name, "opens = %v, want %v", opens, c.Opens))
+			continue
+		}
+		r.Cases = append(r.Cases, pass(c.Name))
+	}
+	return r
+}
+
+// Thumbprint checks RFC 7638 JWK thumbprints, including the exact bytes hashed.
+//
+// The canonical JSON is checked as well as the digest, because pinning only the
+// digest would let two implementations agree by accident on the key types the
+// vectors happen to cover and diverge on the first one they do not.
+func Thumbprint() Result {
+	const file = "keys/jwk-thumbprint.json"
+	r := Result{Set: "uai-cs-1/jwk-thumbprint", File: file}
+	set, err := testvectors.Load[testvectors.ThumbprintCase](file)
+	if err != nil {
+		r.LoadError = err
+		return r
+	}
+	r.Description = set.Description
+	for _, c := range set.Cases {
+		jwk, err := uaicrypto.ParseJWK(c.JWK)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "parse jwk: %v", err))
+			continue
+		}
+		if got := uaicrypto.ThumbprintInput(jwk); got != c.CanonicalJSON {
+			r.Cases = append(r.Cases, fail(c.Name, "canonical json\n  got:  %s\n  want: %s",
+				got, c.CanonicalJSON))
+			continue
+		}
+		got, err := jwk.ThumbprintString()
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "thumbprint: %v", err))
+			continue
+		}
+		if got != c.Thumbprint {
+			r.Cases = append(r.Cases, fail(c.Name, "thumbprint = %s, want %s", got, c.Thumbprint))
+			continue
+		}
+		r.Cases = append(r.Cases, pass(c.Name))
+	}
+	return r
+}
+
+// SigningPayload checks what a signature over a self-signed object covers.
+//
+// The bytes are compared, not only the verification outcome. A verifier that
+// rebuilt a different payload and happened to reject a bad signature would pass
+// an outcome-only check while being unable to verify a good one.
+func SigningPayload() Result {
+	const file = "attestation/signing-payload.json"
+	r := Result{Set: "attestation/signing-payload", File: file}
+	set, err := testvectors.Load[testvectors.SigningPayloadCase](file)
+	if err != nil {
+		r.LoadError = err
+		return r
+	}
+	r.Description = set.Description
+	for _, c := range set.Cases {
+		payload, err := uaicrypto.CanonicalizeWithout(json.RawMessage(c.Document), "signature")
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "canonicalize: %v", err))
+			continue
+		}
+		// Only the positive case pins the payload we must reproduce; the
+		// negative one pins the payload we must NOT produce.
+		if c.MustVerify && string(payload) != c.Payload {
+			r.Cases = append(r.Cases, fail(c.Name,
+				"signing payload differs\n  got:  %s\n  want: %s", payload, c.Payload))
+			continue
+		}
+		if !c.MustVerify && string(payload) == c.Payload {
+			r.Cases = append(r.Cases, fail(c.Name,
+				"the implementation produced the payload the vector marks as wrong"))
+			continue
+		}
+		pubBytes, err := hex.DecodeString(c.PublicHex)
+		if err != nil {
+			r.Cases = append(r.Cases, fail(c.Name, "public key: %v", err))
+			continue
+		}
+		sig := uaicrypto.Signature{
+			Alg: uaicrypto.AlgEdDSA, KID: "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM#key-1",
+			Domain: uaicrypto.Domain(c.Domain), Value: c.Signature,
+		}
+		verifyErr := uaicrypto.Verify(ed25519.PublicKey(pubBytes),
+			uaicrypto.Domain(c.Domain), []byte(c.Payload), sig)
+		if (verifyErr == nil) != c.MustVerify {
+			r.Cases = append(r.Cases, fail(c.Name,
+				"verification outcome = %v, want must_verify=%v", verifyErr == nil, c.MustVerify))
 			continue
 		}
 		r.Cases = append(r.Cases, pass(c.Name))

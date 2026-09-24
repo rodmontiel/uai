@@ -45,6 +45,20 @@ type DigestCase struct {
 	Digest          string `json:"digest"`
 }
 
+// ThumbprintCase covers RFC 7638 JWK thumbprints.
+//
+// The thumbprint is the subject identifier of a registration proof (§8.2): both
+// halves sign it, and an owner vouching for a thumbprint the agent's
+// implementation computes differently vouches for a key that was never
+// presented. That makes agreement between implementations load-bearing, not
+// cosmetic.
+type ThumbprintCase struct {
+	Name          string          `json:"name"`
+	JWK           json.RawMessage `json:"jwk"`
+	CanonicalJSON string          `json:"canonical_json"`
+	Thumbprint    string          `json:"thumbprint"`
+}
+
 // CommitmentCase covers salted commitments.
 type CommitmentCase struct {
 	Name        string `json:"name"`
@@ -160,6 +174,26 @@ type ChainCase struct {
 	PreviousEventHash string          `json:"previous_event_hash,omitempty"`
 	IsFork            bool            `json:"is_fork,omitempty"`
 	ForkNote          string          `json:"fork_note,omitempty"`
+}
+
+// SigningPayloadCase covers what a signature over a self-signed object
+// actually covers: the document with its `signature` member REMOVED (§10.4).
+//
+// It exists because the alternative reading -- blank the member, keep the key --
+// is what a struct-based implementation produces by accident, and the two
+// disagree on four empty strings that no reader of the spec would think to add.
+// An implementation can be byte-correct on every other vector and still sign
+// something nobody else can verify.
+type SigningPayloadCase struct {
+	Name       string          `json:"name"`
+	Document   json.RawMessage `json:"document"`
+	Payload    string          `json:"signing_payload"`
+	PayloadSHA string          `json:"signing_payload_sha256"`
+	Domain     string          `json:"domain"`
+	SeedHex    string          `json:"seed_hex"`
+	PublicHex  string          `json:"public_key_hex"`
+	Signature  string          `json:"signature_b64url"`
+	MustVerify bool            `json:"must_verify"`
 }
 
 // Root returns the repository root, located relative to this source file so
