@@ -1,0 +1,53 @@
+# uai-web — the five verification surfaces (Phase 8).
+#
+# Build:  ./deploy.sh build
+#
+# Same shape as Containerfile.gateway and for the same two reasons: a scratch
+# final image so there is nothing to execute if something goes wrong, and a
+# reproducible binary so the artifact can be rebuilt by whoever is asked to
+# trust it.
+#
+# One difference that matters here. This image carries the frontend SOURCES,
+# not a bundle: there is no build step, no minifier and no transpiler, so what
+# the browser runs is byte-for-byte what is in the repository. The verify page
+# asks a visitor to rely on it to decide whether to rely on an agent, and a
+# visitor who cannot read that code is being asked to trust us after all.
+#
+# Base images are pinned by multi-arch manifest digest (threat T-07).
+
+FROM docker.io/library/golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -mod=readonly \
+      -trimpath \
+      -ldflags="-s -w -buildid= -X main.version=${VERSION}" \
+      -o /out/uai-web ./services/web
+
+RUN printf 'uai:x:65532:65532:uai-web:/nonexistent:/sbin/nologin\n' > /out/passwd \
+ && printf 'uai:x:65532:\n' > /out/group
+
+FROM scratch
+
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/passwd /etc/passwd
+COPY --from=build /out/group  /etc/group
+COPY --from=build /out/uai-web /usr/local/bin/uai-web
+# The pages themselves. Read-only at runtime because the image has no writer:
+# there is no shell in it to change them with.
+COPY --from=build /src/web /srv/web
+
+USER 65532:65532
+
+EXPOSE 8081
+
+# UAI_WEB_ROOT and UAI_API_URL come from the environment, like the gateway's.
+ENV UAI_WEB_ROOT=/srv/web
+ENTRYPOINT ["/usr/local/bin/uai-web"]

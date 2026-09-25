@@ -68,6 +68,7 @@ uai/
 │   ├── attacks/               # the pentest, run against a live gateway
 │   ├── threatmodel/           # 20 checked against the repository
 │   ├── e2e/  integration/  onchain/  schemas/  openapi/  web/
+├── deploy.sh                  # up / down / status: the platform as containers
 ├── Makefile
 ├── go.mod                     # single Go module (see 25.3)
 └── CLAUDE.md

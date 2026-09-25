@@ -276,20 +276,51 @@ Termina así:
 
 ### Levantar la plataforma para usarla
 
-Tres terminales:
+Una sola orden, todo en contenedores:
 
 ```bash
-# 1 — la infraestructura (base de datos + SPIRE). Tarda unos 10 segundos.
-make dev
+./deploy.sh up
+```
 
-# 2 — la API
-make run-gateway
+La primera vez construye las imágenes y tarda unos minutos; después son unos 8 segundos. Al
+terminar te muestra qué levantó y en qué puertos.
 
-# 3 — la interfaz web
-make run-web
+```bash
+./deploy.sh up       # construir lo que falte, levantar todo, aplicar el esquema
+./deploy.sh down     # apagar, conservando los datos
+./deploy.sh nuke     # apagar y borrar los datos
+./deploy.sh status   # qué está corriendo y en qué puertos
+./deploy.sh logs uai-gateway   # seguir los registros de un servicio
 ```
 
 Y después, en el navegador: **http://localhost:8081**
+
+Con `podman ps` vas a ver cuatro contenedores:
+
+```
+uai_postgres_1       la base de datos
+uai_spire-server_1   la autoridad que certifica dónde corre cada agente
+uai_uai-gateway_1    la API
+uai_uai-web_1        la interfaz web
+```
+
+> **Lo único que no es un contenedor es el agente de SPIRE**, y no es un descuido. Ese componente
+> identifica a un proceso mirándolo desde afuera, así que tiene que compartir la misma vista que
+> los procesos que certifica — y los agentes que vas a querer certificar corren en tu máquina, no
+> dentro de este stack. Se enciende con `make spire-up`, y `./deploy.sh status` te dice si está.
+
+### Si preferís trabajar sobre el código
+
+Para desarrollar conviene correr la API desde las fuentes en vez de desde una imagen:
+
+```bash
+make dev          # solo la infraestructura (base de datos + SPIRE)
+make run-gateway  # la API, desde el código
+make run-web      # la interfaz, desde el código
+```
+
+La diferencia: `./deploy.sh up` corre lo que está construido, `make dev` + `make run-*` corre lo
+que estás editando.
 
 ### Las cinco pantallas
 
@@ -424,7 +455,9 @@ Fase 13.
 
 | Síntoma | Causa y solución |
 |---|---|
-| `make dev` falla con `type "agent_status" already exists` | Base vieja sin registro de migraciones. `make migrate-baseline`, o `make nuke` para empezar de cero (borra los datos) |
+| `make dev` falla con `type "agent_status" already exists` | Base vieja sin registro de migraciones. `make migrate-baseline`, o `./deploy.sh nuke` para empezar de cero (borra los datos) |
+| `./deploy.sh up` se queda sin espacio | Los contenedores viejos dejan volúmenes huérfanos. `podman volume prune` los borra; revisá la lista antes, por si hay alguno de otro proyecto |
+| El gateway sale con `permission denied` sobre `/keys/issuer.jwk` | La clave se copia a un volumen del servicio al arrancar. Volver a correr `./deploy.sh up` lo rehace |
 | El gateway no arranca y habla de la clave del emisor | La clave nunca se genera sola al arrancar, a propósito: una clave que cambia en cada reinicio emite credenciales que después no validan. `make issuer-key` |
 | El gateway avisa `runtime attestation disabled` | Es normal y está bien. Sin SPIRE configurado registra runtimes auto-declarados; la advertencia existe para que la diferencia no sea invisible |
 | `make demo` dice que el puerto está ocupado | Quedó una corrida anterior. El propio target intenta limpiarla; si no, `make demo DEMO_PORT=9999` |

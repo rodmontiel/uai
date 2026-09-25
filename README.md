@@ -30,6 +30,16 @@ makes the rest credible.
 
 > `identified` ≠ `safe`. Identity enables accountability. Accountability is what trust is built on.
 
+## Run it
+
+```bash
+./deploy.sh up      # four containers; `podman ps` shows them
+```
+
+Then open **http://localhost:8081**. `./deploy.sh down` stops it, `./deploy.sh status` says what is
+running. To see the whole protocol exercised end to end instead, `make demo` stands up a throwaway
+stack, runs the ACME scenario and fails if any of the 21 MVP criteria is not demonstrated.
+
 ## New here?
 
 [**`docs/MANUAL.md`**](docs/MANUAL.md) explains the whole system from the ground up for readers who

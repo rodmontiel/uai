@@ -144,8 +144,11 @@ my machine" unfalsifiable.
 The Makefile follows the same rule — a target exists only when it works:
 
 ```bash
+./deploy.sh up   # the platform as four containers; down / nuke / status / logs
+./deploy.sh status
+
 make runtime     # show the detected runtime, compose provider and image tags
-make up          # start the infrastructure containers
+make up          # start ONLY the infrastructure containers (postgres, SPIRE server)
 make migrate     # apply the schema
 make dev         # up + migrate + seed + spire-up
 make image       # build the gateway image (rootless, scratch-based, reproducible)
@@ -157,6 +160,11 @@ make spire-up    # start the host SPIRE agent and bootstrap it against the serve
 make spire-entry ULID=01JY…   # register which process may hold which identity
 make attested    # prove a binding records a runtime SPIRE attested, and what that is worth
 ```
+
+The two paths are different on purpose. `./deploy.sh up` runs what was **built** — the gateway and
+the frontend as scratch images, visible in `podman ps` — and is how somebody runs UAI. `make up`
+starts only the infrastructure, so a developer can run the gateway from **source** against it with
+`make run-gateway`; starting the built images there would quietly shadow the code being edited.
 
 `make dev` leaves the stack attesting, and prints the two flags the gateway needs to verify
 SVIDs. Without them the gateway starts anyway and logs a warning saying bindings will record

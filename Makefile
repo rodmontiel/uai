@@ -93,14 +93,22 @@ runtime: ## Show the detected container runtime and compose provider
 	@if [ "$(CONTAINER)" = podman ]; then \
 		echo "rootless: $$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null)"; fi
 
+# Named explicitly rather than "everything in the file". The compose stack also
+# carries uai-gateway and uai-web, and those are the deployment path
+# (`./deploy.sh up`), not the development one: `make up` exists so a developer
+# can run the gateway from source with `make run-gateway` against real
+# infrastructure. Starting them here would fail on an image nobody built, and
+# would quietly shadow the source the developer is editing.
+INFRA_SERVICES ?= postgres spire-server
+
 .PHONY: up
-up: ## Start infrastructure containers
+up: ## Start infrastructure containers (postgres, SPIRE server)
 	@# Only the delegating provider needs the socket; podman-compose does not.
 	@case "$(COMPOSE)" in "podman compose"*) \
 		systemctl --user start podman.socket 2>/dev/null \
 		|| echo "warn: podman.socket unavailable — install podman-compose for a socket-free path";; \
 	esac
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d $(INFRA_SERVICES)
 	@echo "waiting for postgres..."
 	@until $(COMPOSE) exec -T postgres pg_isready -U uai >/dev/null 2>&1; do sleep 1; done
 	@echo "ready"

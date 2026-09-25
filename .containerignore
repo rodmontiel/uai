@@ -10,9 +10,14 @@ raw/
 
 # Not needed to compile a server binary, and every megabyte here is a megabyte
 # the daemonless build has to hash on every invocation.
+#
+# `web/` is NOT here, and that is deliberate: Containerfile.web copies those 15
+# files (84 KB) into the image, because the frontend ships as sources rather
+# than as a bundle. One ignore file for both builds rather than an --ignorefile
+# per image -- that flag is Podman-only, and this repository keeps Docker
+# working on every path.
 docs/
 demo/
-web/
 sdk/
 mcp/
 contracts/

@@ -166,6 +166,47 @@ jobs:
       - name: attack it
         run: make CONTAINER=docker pentest
 
+  # ── the platform, as containers ─────────────────────────────────────────────
+  deploy:
+    name: deploy.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      # From nothing: build the images, start four containers, apply the schema,
+      # and answer on both ports. This is the path somebody follows to run UAI,
+      # and it broke twice while being written — a gateway that could not read a
+      # 0700 key, and a gateway that started before the schema existed. Neither
+      # showed up in any other job.
+      - name: up
+        run: CONTAINER=docker ./deploy.sh up
+      - name: the four containers are running
+        run: |
+          CONTAINER=docker ./deploy.sh status
+          for s in postgres spire-server uai-gateway uai-web; do
+            docker ps --format '{{.Names}}' | grep -q "$s" || {
+              echo "$s is not running"; exit 1; }
+          done
+      - name: the API and the surfaces answer
+        run: |
+          curl -fsS http://localhost:8080/v1/quarantines > /dev/null
+          curl -fsS http://localhost:8080/v1/trust-anchors > /dev/null
+          curl -fsS http://localhost:8081/ > /dev/null
+          curl -fsS http://localhost:8081/verify.html > /dev/null
+          # Through the frontend's proxy, which is how a browser reaches it.
+          curl -fsS http://localhost:8081/v1/quarantines > /dev/null
+      # Twice, because the second time is the one that finds state the first
+      # left behind: a migrator that re-ran everything made this fail.
+      - name: up again is a no-op
+        run: CONTAINER=docker ./deploy.sh up
+      - name: down
+        run: CONTAINER=docker ./deploy.sh down
+
   # ── runtime attestation against a real SPIRE ────────────────────────────────
   attested:
     name: runtime attestation
