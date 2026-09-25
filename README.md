@@ -30,6 +30,12 @@ makes the rest credible.
 
 > `identified` ≠ `safe`. Identity enables accountability. Accountability is what trust is built on.
 
+## New here?
+
+[**`docs/MANUAL.md`**](docs/MANUAL.md) explains the whole system from the ground up for readers who
+do not program — what each component uses, what it is for, and what it is like — and walks through
+standing it up and testing it. It is written in Spanish; the specification below is in English.
+
 ## Specification
 
 The protocol and architecture are defined in [`docs/protocol/`](docs/protocol/) — 26 sections,

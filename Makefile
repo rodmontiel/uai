@@ -127,6 +127,11 @@ migrate: ## Apply database migrations
 seed: ## Load development bootstrap data (jurisdictions)
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/seed up
 
+.PHONY: migrate-baseline
+migrate-baseline: ## Record every migration as applied, for a database that predates the ledger
+	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations baseline
+	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/seed baseline
+
 .PHONY: migrate-down
 migrate-down: ## Roll back the most recent migration
 	$(GO) run ./tools/uai-migrate -dsn "$(PG_DSN)" -dir db/migrations -steps 1 down
