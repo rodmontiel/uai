@@ -1,345 +1,343 @@
-# Manual de usuario
+# User manual
 
-> Este documento explica UAI **desde cero**, sin dar por sabido nada. Está escrito para que lo
-> entienda alguien que no programa. Los tecnicismos aparecen, pero siempre acompañados de qué
-> hacen y a qué se parecen.
+> *Also available in Spanish: [`MANUAL.es.md`](MANUAL.es.md).*
 >
-> El resto de `docs/` está en inglés, porque la especificación está pensada para presentarse ante
-> organismos internacionales. Este manual no: es para entender y para probar.
+> This document explains UAI **from the ground up**, assuming nothing. It is written for someone
+> who does not program. Technical terms do appear, but always with what they do and what they are
+> like.
 
 ---
 
-## 1. El problema, en una frase
+## 1. The problem, in one sentence
 
-Un programa de inteligencia artificial hizo algo. **¿Quién fue, y quién responde?**
+An artificial-intelligence program did something. **Who was it, and who answers for it?**
 
-Hoy, en la práctica, no hay respuesta. Un agente de IA que manda un correo, mueve plata o borra un
-archivo deja como rastro, con suerte, una línea en un log que dice `bot-27`. Esa línea la escribió
-el mismo sistema que hizo la acción. Es como un recibo que se firmó a sí mismo.
+Today, in practice, there is no answer. An AI agent that sends an email, moves money or deletes a
+file leaves behind, at best, a line in a log saying `bot-27`. That line was written by the same
+system that took the action. It is a receipt that signed itself.
 
-UAI existe para que esa pregunta tenga respuesta, y para que la respuesta se pueda **comprobar sin
-confiar en nosotros**.
+UAI exists so that question has an answer, and so the answer can be **checked without trusting us**.
 
-### Lo que UAI NO hace
+### What UAI does NOT do
 
-Esto va primero, no al final, porque es lo que más fácil se malentiende:
+This comes first, not last, because it is the easiest thing to misread:
 
-- **UAI no dice que un agente sea seguro.** Ningún protocolo puede. Dice *quién es*, *quién
-  responde por él*, *qué se le permitió* y *qué hizo*.
-- **UAI no tiene un botón de apagado global.** No existe, y no puede existir. Revocar una
-  identidad significa que *los demás dejan de aceptarla* — no que el programa se detenga. Si el
-  agente corre en una computadora desconectada, sigue corriendo. La demo lo muestra a propósito.
+- **UAI does not say an agent is safe.** No protocol can. It says *who it is*, *who answers for
+  it*, *what it was allowed to do* and *what it did*.
+- **UAI has no global kill switch.** It does not exist and cannot exist. Revoking an identity means
+  *everyone else stops accepting it* — not that the program stops. If the agent runs on a
+  disconnected machine, it keeps running. The demo shows this on purpose.
 
-> Analogía: si a alguien le anulan el pasaporte, no se desintegra. Simplemente deja de poder
-> cruzar fronteras donde lo revisan. UAI es el sistema de pasaportes, no la policía.
+> Analogy: if someone's passport is cancelled, they do not disintegrate. They simply stop being
+> able to cross borders where it gets checked. UAI is the passport system, not the police.
 
 ---
 
-## 2. Las cuatro cosas que UAI le da a un agente
+## 2. The four things UAI gives an agent
 
-| Se llama | Se parece a | Qué es realmente |
+| It is called | It is like | What it actually is |
 |---|---|---|
-| **UAI-ID** | Un número de documento | Un identificador único e irrepetible. No dice nada de la persona: es el número al que se le cuelga todo lo demás |
-| **Credencial** | Un título o un carnet | Un documento firmado que dice de quién es ese agente y qué se le habilitó |
-| **Pasaporte** | Un pasaporte | Un permiso con fecha de vencimiento para actuar en ciertos países. Dice **dónde**, nunca **qué** |
-| **Atestación de acción** | Un recibo de escribano | Un registro firmado de cada cosa que hizo, encadenado al anterior |
+| **UAI-ID** | A national ID number | A unique, unrepeatable identifier. It says nothing about the holder: it is the number everything else hangs off |
+| **Credential** | A diploma or a licence | A signed document saying whose agent this is and what it was enabled to do |
+| **Passport** | A passport | A permission with an expiry date to act in certain countries. It says **where**, never **what** |
+| **Action attestation** | A notarized receipt | A signed record of each thing it did, chained to the previous one |
 
-La distinción entre credencial y pasaporte importa y es fácil de perder:
+The distinction between credential and passport matters and is easy to lose:
 
-- La **credencial** dice *"este agente puede optimizar rutas de entrega"*. Eso es el **qué**, y lo
-  otorga el dueño.
-- El **pasaporte** dice *"puede hacerlo en Argentina y Alemania, hasta el 3 de marzo"*. Eso es el
-  **dónde y hasta cuándo**.
+- The **credential** says *"this agent may optimize delivery routes"*. That is the **what**, and
+  the owner grants it.
+- The **passport** says *"it may do so in Argentina and Germany, until 3 March"*. That is the
+  **where and until when**.
 
-Un pasaporte nunca puede agregar una capacidad que el dueño no dio. Por eso el agente puede
-pedirlo solo, sin que eso sea un auto-permiso.
+A passport can never add a capability the owner did not grant. That is why an agent can request one
+itself without that being a self-granted permission.
 
 ---
 
-## 3. De qué está hecho, pieza por pieza
+## 3. What it is made of, piece by piece
 
-Acá va cada componente con la tecnología que usa, para qué sirve, y a qué se parece.
+Each component below: the technology it uses, what that is for, and what it is like.
 
-### 3.1 Firma digital — *el sello lacrado*
+### 3.1 Digital signature — *the wax seal*
 
-**Tecnología: criptografía de clave pública (Ed25519).**
+**Technology: public-key cryptography (Ed25519).**
 
-Cada agente genera **dos llaves matemáticamente emparejadas**. Una la guarda y no la muestra nunca
-(la *privada*). La otra la publica (la *pública*).
+Every agent generates **two mathematically paired keys**. One it keeps and never shows (the
+*private* one). The other it publishes (the *public* one).
 
-Lo que hace especial al par es esto: lo que se sella con la privada, cualquiera puede comprobarlo
-con la pública — **pero nadie puede fabricar el sello sin tener la privada.**
+What makes the pair special is this: anything sealed with the private key can be checked by anyone
+holding the public one — **but nobody can forge the seal without the private key.**
 
-> Analogía: un sello de lacre que solo vos tenés. Todo el mundo reconoce tu escudo, nadie puede
-> tallar uno igual.
+> Analogy: a wax seal only you own. Everyone recognizes your crest; nobody can carve an identical
+> one.
 
-UAI nunca genera las llaves de un agente. El agente se las hace solo, y **nosotros nunca vemos la
-privada**. Eso es deliberado: si la tuviéramos, podríamos firmar en su nombre, y entonces una firma
-ya no probaría quién actuó.
+UAI never generates an agent's keys. The agent makes its own, and **we never see the private one**.
+That is deliberate: if we held it, we could sign in the agent's name, and a signature would stop
+proving who acted.
 
-### 3.2 Canonicalización — *ponerse de acuerdo en cómo se escribe, antes de firmar*
+### 3.2 Canonicalization — *agreeing how to write it down, before signing*
 
-**Tecnología: JCS, RFC 8785.**
+**Technology: JCS, RFC 8785.**
 
-Un problema aburrido y crítico: `{"a":1,"b":2}` y `{ "b":2, "a":1 }` dicen lo mismo, pero son
-textos distintos, así que producen sellos distintos. Si el que firma y el que verifica escriben el
-documento de forma levemente diferente, la firma no valida — y parece un fraude cuando es solo un
-espacio de más.
+A boring and critical problem: `{"a":1,"b":2}` and `{ "b":2, "a":1 }` say the same thing, but they
+are different text, so they produce different seals. If the signer and the verifier write the
+document even slightly differently, the signature fails to validate — and it looks like fraud when
+it was one extra space.
 
-JCS es una regla que dice exactamente cómo escribir el documento antes de sellarlo: en qué orden
-van los campos, cuántos espacios, cómo se escriben los números.
+JCS is a rule that says exactly how to write the document before sealing it: what order the fields
+go in, how many spaces, how numbers are written.
 
-> Analogía: antes de firmar un contrato, las dos partes acuerdan la tipografía, el tamaño de hoja
-> y el orden de las cláusulas. Suena burocrático. Es lo que hace que dos copias sean comparables.
+> Analogy: before signing a contract, both parties agree on the typeface, the paper size and the
+> order of the clauses. It sounds bureaucratic. It is what makes two copies comparable.
 
-Está implementado **tres veces** en este repositorio — en Go, en Python y en TypeScript — y las
-tres se prueban contra los **mismos ejemplos de referencia**. Así es como se evita que tres
-implementaciones se conviertan en tres protocolos distintos.
+It is implemented **three times** in this repository — in Go, in Python and in TypeScript — and all
+three are tested against the **same reference examples**. That is what keeps three implementations
+from becoming three different protocols.
 
-### 3.3 Separación de dominios — *para qué sirve esta firma*
+### 3.3 Domain separation — *what this signature is for*
 
-Cada firma lleva adentro una etiqueta que dice para qué se hizo: `UAI-v1:attestation`,
+Every signature carries a label inside saying what it was made for: `UAI-v1:attestation`,
 `UAI-v1:vote`, `UAI-v1:quarantine`.
 
-> Analogía: firmar un cheque y firmar un permiso de viaje. Aunque sea la misma mano, no querés que
-> alguien pueda recortar tu firma de uno y pegarla en el otro.
+> Analogy: signing a cheque and signing a travel consent form. Same hand, but you do not want
+> anyone cutting your signature off one and pasting it onto the other.
 
-Sin esa etiqueta, una firma hecha para reportar una sospecha podría reusarse como si fuera la orden
-de cuarentena que viene después.
+Without that label, a signature made to report a suspicion could be reused as the quarantine order
+that follows it.
 
-### 3.4 La cadena de eventos — *las hojas numeradas de un cuaderno*
+### 3.4 The event chain — *the numbered pages of a notebook*
 
-Cada acción de un agente se guarda con el **resumen de la acción anterior** metido adentro.
+Every action an agent takes is stored with the **digest of the previous action** inside it.
 
-> Analogía: un cuaderno donde cada página arriba escribe el resumen de la página anterior. Si
-> alguien arranca una hoja, la siguiente ya no cierra. No se puede borrar en silencio.
+> Analogy: a notebook where each page writes the summary of the previous page at the top. If
+> someone tears a page out, the next one no longer adds up. Nothing can be deleted quietly.
 
-Si el mismo agente aparece corriendo en dos lugares a la vez, la cadena se bifurca — y una cadena
-bifurcada **no tiene explicación inocente**. Es la señal de que alguien clonó la identidad.
+If the same agent shows up running in two places at once, the chain forks — and a forked chain
+**has no innocent explanation**. It is the signal that somebody cloned the identity.
 
-### 3.5 El registro de transparencia — *el libro de actas público*
+### 3.5 The transparency log — *the public minute book*
 
-**Tecnología: árbol de Merkle (RFC 6962), lo mismo que usan los certificados de internet.**
+**Technology: Merkle tree (RFC 6962), the same thing internet certificates use.**
 
-Todo lo que se registra entra en una estructura que permite dos cosas notables:
+Everything recorded goes into a structure that allows two remarkable things:
 
-1. Demostrar que **algo está adentro**, sin mostrar todo lo demás.
-2. Demostrar que el libro **solo creció**, que nunca se reescribió una página vieja.
+1. Proving that **something is inside**, without showing everything else.
+2. Proving the book **only grew**, that no old page was ever rewritten.
 
-> Analogía: un libro de actas donde cada página lleva un número que depende de todas las anteriores.
-> Cambiar una coma en la página 3 cambia el número de la última página, y todo el mundo lo ve.
+> Analogy: a minute book where every page carries a number derived from all the pages before it.
+> Changing one comma on page 3 changes the number on the last page, and everyone sees it.
 
-**El registro no guarda el contenido.** Guarda solamente una huella. Si alguien se roba la base de
-datos del registro, no se lleva ni un prompt ni un dato personal.
+**The log does not store the content.** It stores only a fingerprint. If somebody steals the log's
+database, they get neither a prompt nor a piece of personal data.
 
-### 3.6 Testigos — *firmar el mismo libro desde otra oficina*
+### 3.6 Witnesses — *signing the same book from another office*
 
-Un libro de actas tiene un problema: ¿y si el que lo lleva te muestra una versión a vos y otra
-distinta a otro? Eso se llama *vista partida*, y la criptografía sola no lo detecta.
+A minute book has a problem: what if whoever keeps it shows one version to you and a different one
+to somebody else? That is called a *split view*, and cryptography alone does not catch it.
 
-La solución no es técnica sino organizativa: **otros firman el mismo libro**. Si el registro
-intentara mostrar dos historias, tendría que conseguir que los testigos firmaran las dos.
+The answer is not technical but organizational: **other parties sign the same book**. For the log to
+show two histories, it would have to get the witnesses to sign both.
 
-> Analogía: dos escribanos de estudios distintos firman el mismo acta. Falsificarla deja de ser un
-> problema de uno y pasa a ser una conspiración.
+> Analogy: two notaries from different firms sign the same minute. Forging it stops being one
+> person's problem and becomes a conspiracy.
 
-Hoy en este repositorio los testigos corren en la misma máquina, y **eso no vale como
-independencia**. Está anotado como pendiente, no disimulado.
+In this repository today the witnesses run on the same machine, and **that does not count as
+independence**. It is written down as pending, not hidden.
 
-### 3.7 Anclaje en blockchain — *clavar el libro en la plaza*
+### 3.7 Blockchain anchoring — *nailing the book up in the town square*
 
-Cada tanto, la huella del libro de actas se publica en una cadena de bloques.
+Every so often, the fingerprint of the minute book is published on a blockchain.
 
-> Analogía: pegar en la puerta del juzgado un papel que dice "a las 15:00 el libro de actas iba por
-> la página 4.812 y su huella era ésta". Si después alguien reescribe el libro, el papel de la
-> puerta lo contradice.
+> Analogy: posting a note on the courthouse door saying "at 15:00 the minute book was on page 4,812
+> and its fingerprint was this". If somebody later rewrites the book, the note on the door
+> contradicts it.
 
-**En la cadena no va contenido**, solo huellas con sal. Eso está garantizado por una prueba
-automática que rechaza cualquier contrato que declare un parámetro capaz de llevar texto.
+**No content goes on the chain**, only salted fingerprints. That is guaranteed by an automated test
+that rejects any contract declaring a parameter capable of carrying text.
 
-> Lo de "con sal" importa: la huella de un dato adivinable (un email, por ejemplo) se puede
-> descubrir probando con un diccionario. Agregarle un valor secreto al azar antes de calcularla lo
-> hace inviable.
+> The "salted" part matters: the fingerprint of a guessable value (an email address, say) can be
+> recovered by trying a dictionary. Adding a secret random value before computing it makes that
+> infeasible.
 
-### 3.8 El guardarraíl — *el reglamento, y el que lo aplica*
+### 3.8 The guardrail — *the rulebook, and whoever applies it*
 
-**Tecnología: OPA / Rego, un motor de reglas.**
+**Technology: OPA / Rego, a policy engine.**
 
-Antes de cada acción, el agente pregunta: *"¿puedo hacer esto?"*. Quien contesta es un motor de
-políticas que consulta un **reglamento firmado**.
+Before each action, the agent asks: *"may I do this?"*. What answers is a policy engine consulting a
+**signed rulebook**.
 
-El reglamento no es un archivo que cualquiera edite: está firmado por varios custodios
-independientes, y el motor **se niega a cargarlo** si las firmas no dan. Editar una regla sin
-volver a firmar rompe el arranque.
+The rulebook is not a file anyone can edit: it is signed by several independent custodians, and the
+engine **refuses to load it** if the signatures do not check out. Editing a rule without re-signing
+breaks startup.
 
-> Analogía: el reglamento de un club, firmado por tres miembros del consejo. El portero no lo aplica
-> porque esté impreso: lo aplica porque reconoce las firmas.
+> Analogy: a club's rulebook, signed by three board members. The doorman does not enforce it because
+> it is printed: he enforces it because he recognizes the signatures.
 
-Y cada decisión que toma queda registrada **con la versión exacta del reglamento** que se usó. Sin
-eso, revisar una decisión de hace dos años sería imposible: no se sabría contra qué reglas se tomó.
+And every decision it makes is recorded **with the exact version of the rulebook** used. Without
+that, reviewing a decision from two years ago would be impossible: nobody would know which rules it
+was taken against.
 
-### 3.9 La gobernanza — *revocar requiere gente, no software*
+### 3.9 Governance — *revoking takes people, not software*
 
-Para revocar una identidad de forma permanente hacen falta **4 votos de 5 delegados, de al menos 3
-países distintos**.
+Permanently revoking an identity takes **4 votes out of 5 delegates, from at least 3 different
+countries**.
 
-**Tecnología: WebAuthn**, el mismo estándar de las llaves físicas de seguridad y del lector de
-huella del teléfono.
+**Technology: WebAuthn**, the same standard behind physical security keys and phone fingerprint
+readers.
 
-Acá hay un detalle de diseño que es el corazón del sistema: **el desafío que firma la llave física
-ES el resumen del voto**. No es "iniciar sesión y después votar". Es que el aparatito firma
-exactamente *el contenido de lo que se está votando*.
+There is a design detail here that is the heart of the system: **the challenge the physical key
+signs IS the digest of the vote**. It is not "log in and then vote". The device signs exactly *the
+content of what is being voted on*.
 
-> Analogía: en vez de mostrar el documento en la puerta y después firmar cualquier papel adentro, la
-> lapicera solo escribe si le apoyás el dedo **sobre ese papel concreto**.
+> Analogy: instead of showing ID at the door and then signing whatever paper is inside, the pen only
+> writes when you press your finger **on that specific sheet**.
 
-Consecuencia práctica: **ningún programa puede votar.** Un proceso automático puede tener la
-credencial del delegado y aun así no puede producir un voto válido, porque el aparato exige la
-verificación de un humano presente. El sistema lo rechaza con un error que lo dice con todas las
-letras.
+The practical consequence: **no program can vote.** An automated process can hold a delegate's
+credential and still cannot produce a valid vote, because the device demands verification of a
+human who is present. The system refuses it with an error that says so in as many words.
 
-> El administrador del sistema es de solo lectura por construcción. Lo único que puede hacer con una
-> revocación es ejecutar una que ya fue decidida, y el contrato vuelve a verificar las firmas de los
-> delegados antes de aceptarla. Un administrador comprometido no puede revocar a nadie.
+> The system administrator is read-only by construction. The only thing they can do with a
+> revocation is execute one that was already decided, and the contract re-verifies the delegates'
+> signatures before accepting it. A compromised administrator cannot revoke anybody.
 
-### 3.10 Atestación de runtime — *el carnet te lo da el edificio, no vos*
+### 3.10 Runtime attestation — *the building issues the badge, not you*
 
-**Tecnología: SPIFFE/SPIRE.**
+**Technology: SPIFFE/SPIRE.**
 
-Hasta hace poco, cuando un agente se conectaba y decía *"estoy corriendo en tal lugar, con tal
-programa"*, el sistema le creía. Estaba firmado... **por el propio agente**. Es un formulario que
-uno llena sobre sí mismo.
+Until recently, when an agent connected and said *"I am running in this place, as this program"*,
+the system believed it. It was signed... **by the agent itself**. It is a form you fill in about
+yourself.
 
-SPIRE cambia eso. Es un servicio que mira el proceso **desde afuera** —le pregunta al sistema
-operativo quién lo está ejecutando, desde qué archivo, con qué usuario— y solo entonces le entrega
-un certificado de corta duración.
+SPIRE changes that. It is a service that looks at the process **from outside** — it asks the
+operating system who is running it, from which file, as which user — and only then hands over a
+short-lived certificate.
 
-> Analogía: la diferencia entre escribir tu nombre en una lista al entrar a un edificio, y que
-> recepción te saque una foto, chequee tu documento y te imprima un carnet con vencimiento. Lo
-> segundo no lo podés falsificar solo.
+> Analogy: the difference between writing your name on a list as you walk into a building, and
+> reception taking your photo, checking your ID and printing you a badge with an expiry time. You
+> cannot forge the second one alone.
 
-Lo que esto bloquea, concretamente: un agente que tiene un certificado **perfectamente válido** ya
-no puede usarlo para hacerse pasar por otro. El sistema comprueba que el certificado *nombre a esa
-identidad*, y si no, lo rechaza.
+What this blocks, concretely: an agent holding a **perfectly valid** certificate can no longer use
+it to pass as somebody else. The system checks that the certificate *names that identity*, and
+refuses it otherwise.
 
-### 3.11 El SDK — *el enchufe*
+### 3.11 The SDK — *the plug*
 
-Un SDK es la pieza que un desarrollador mete en su programa para hablar con UAI. Hay tres (Python,
-TypeScript, Go) y un servidor MCP para agentes que usan ese estándar.
+An SDK is the piece a developer drops into their program to talk to UAI. There are three (Python,
+TypeScript, Go) and an MCP server for agents using that standard.
 
-El diseño parte de admitir algo incómodo: **un SDK no puede obligar a un agente a rendir cuentas**,
-porque corre dentro del propio agente. Lo único que se puede hacer es que el camino honesto sea el
-más cómodo. Por eso la forma es ésta:
+The design starts from an uncomfortable admission: **an SDK cannot force an agent to be
+accountable**, because it runs inside the agent itself. The only thing you can do is make the
+honest path the easy one. Hence this shape:
 
 ```python
-with agent.action("enviar cotización al cliente") as act:
-    resultado = hacer_el_trabajo()
+with agent.action("send the quote to the customer") as act:
+    result = do_the_work()
 ```
 
-Consultar la política, registrar el resultado y firmarlo pasa **solo**, incluso si el trabajo
-falla. No hay que acordarse de nada. Un diseño donde hubiera que llamar a "registrar" al final
-sería un diseño donde las acciones que salen mal no se registran.
+Consulting the policy, recording the outcome and signing it happen **on their own**, even if the
+work fails. There is nothing to remember. A design where you had to call "record" at the end would
+be a design where the actions that go wrong do not get recorded.
 
 ---
 
-## 4. Cómo lo pruebo
+## 4. How do I try it
 
-### Lo que hace falta tener instalado
+### What you need installed
 
-- **Podman** (o Docker) — para levantar la base de datos y SPIRE en contenedores.
-- **Go 1.27** — para compilar.
-- **Python 3** con la librería `cryptography` — para la demo y el SDK.
-- **psql** — el cliente de PostgreSQL.
+- **Podman** (or Docker) — to run the database and SPIRE in containers.
+- **Go 1.27** — to compile.
+- **Python 3** with the `cryptography` library — for the demo and the SDK.
+- **psql** — the PostgreSQL client.
 
-> Un contenedor es un programa empaquetado con todo lo que necesita, que corre aislado del resto de
-> la máquina. *Rootless* quiere decir que corre sin permisos de administrador: si algo sale mal,
-> el daño está acotado.
+> A container is a program packaged with everything it needs, running isolated from the rest of the
+> machine. *Rootless* means it runs without administrator privileges: if something goes wrong, the
+> damage is bounded.
 
-### El camino más corto: una sola orden
+### The shortest path: one command
 
 ```bash
 make demo
 ```
 
-Esto levanta todo desde cero, corre el escenario completo de una empresa ficticia, y **falla si
-alguno de los 21 criterios del MVP no queda demostrado**. Al final limpia todo lo que creó.
+This stands everything up from scratch, runs the full scenario of a fictional company, and **fails
+if any of the 21 MVP criteria is not demonstrated**. It cleans up everything it created afterwards.
 
-No es una narración: es un test que se puede leer. Muestra registrar un agente, atarlo a un
-runtime, pedir permisos, actuar, que el guardarraíl deniegue algo, abrir un caso, votar una
-revocación con cinco delegados, ejecutarla, y verificar todo desde afuera.
+It is not a narration: it is a test you can read. It shows registering an agent, binding it to a
+runtime, requesting permissions, acting, the guardrail denying something, opening a case, voting a
+revocation with five delegates, executing it, and verifying all of it from outside.
 
-Termina así:
+It ends like this:
 
 ```
 21/21 criteria demonstrated
 ```
 
-### Levantar la plataforma para usarla
+### Standing the platform up to use it
 
-Una sola orden, todo en contenedores:
+One command, everything in containers:
 
 ```bash
 ./deploy.sh up
 ```
 
-La primera vez construye las imágenes y tarda unos minutos; después son unos 8 segundos. Al
-terminar te muestra qué levantó y en qué puertos.
+The first time it builds the images and takes a few minutes; after that it is about 8 seconds. When
+it finishes it shows what it started and on which ports.
 
 ```bash
-./deploy.sh up       # construir lo que falte, levantar todo, aplicar el esquema
-./deploy.sh down     # apagar, conservando los datos
-./deploy.sh nuke     # apagar y borrar los datos
-./deploy.sh status   # qué está corriendo y en qué puertos
-./deploy.sh logs uai-gateway   # seguir los registros de un servicio
+./deploy.sh up       # build what is missing, start everything, apply the schema
+./deploy.sh down     # stop, keeping the data
+./deploy.sh nuke     # stop and delete the data
+./deploy.sh status   # what is running, and on which ports
+./deploy.sh logs uai-gateway   # follow one service's logs
 ```
 
-Y después, en el navegador: **http://localhost:8081**
+Then, in the browser: **http://localhost:8081**
 
-Con `podman ps` vas a ver cuatro contenedores:
+`podman ps` will show four containers:
 
 ```
-uai_postgres_1       la base de datos
-uai_spire-server_1   la autoridad que certifica dónde corre cada agente
-uai_uai-gateway_1    la API
-uai_uai-web_1        la interfaz web
+uai_postgres_1       the database
+uai_spire-server_1   the authority that certifies where each agent runs
+uai_uai-gateway_1    the API
+uai_uai-web_1        the web interface
 ```
 
-> **Lo único que no es un contenedor es el agente de SPIRE**, y no es un descuido. Ese componente
-> identifica a un proceso mirándolo desde afuera, así que tiene que compartir la misma vista que
-> los procesos que certifica — y los agentes que vas a querer certificar corren en tu máquina, no
-> dentro de este stack. Se enciende con `make spire-up`, y `./deploy.sh status` te dice si está.
+> **The one thing that is not a container is the SPIRE agent**, and that is not an oversight. That
+> component identifies a process by looking at it from outside, so it has to share a view with the
+> processes it certifies — and the agents you will want certified run on your machine, not inside
+> this stack. `make spire-up` starts it, and `./deploy.sh status` tells you whether it is on.
 
-### Si preferís trabajar sobre el código
+### If you would rather work on the code
 
-Para desarrollar conviene correr la API desde las fuentes en vez de desde una imagen:
+For development it is better to run the API from source instead of from an image:
 
 ```bash
-make dev          # solo la infraestructura (base de datos + SPIRE)
-make run-gateway  # la API, desde el código
-make run-web      # la interfaz, desde el código
+make dev          # infrastructure only (database + SPIRE)
+make run-gateway  # the API, from source
+make run-web      # the interface, from source
 ```
 
-La diferencia: `./deploy.sh up` corre lo que está construido, `make dev` + `make run-*` corre lo
-que estás editando.
+The difference: `./deploy.sh up` runs what was built, `make dev` + `make run-*` runs what you are
+editing.
 
-### Las cinco pantallas
+### The five surfaces
 
-| Dirección | Qué es | Qué mirar |
+| Address | What it is | What to look at |
 |---|---|---|
-| `http://localhost:8081/` | Inicio | El resumen, y qué dice el sistema de sí mismo |
-| `http://localhost:8081/verify.html` | **Verificar** | La pantalla central: pegás un UAI-ID y dice si es válido. Esta página **comprueba las pruebas en tu navegador**, no muestra un veredicto que le pasamos |
-| `http://localhost:8081/explorer.html` | Explorador | El libro de actas: las acciones registradas y sus pruebas |
-| `http://localhost:8081/quarantine.html` | Cuarentenas | Agentes con restricciones preventivas, y qué se les suspendió |
-| `http://localhost:8081/governance.html` | Gobernanza | Las propuestas de revocación, quién votó qué y bajo qué umbral |
-| `http://localhost:8081/agent.html?id=…` | Ficha de agente | Todo lo público de una identidad |
+| `http://localhost:8081/` | Home | The overview, and what the system says about itself |
+| `http://localhost:8081/verify.html` | **Verify** | The central screen: paste a UAI-ID and it says whether it is valid. This page **checks the proofs in your browser**; it does not display a verdict we handed it |
+| `http://localhost:8081/explorer.html` | Explorer | The minute book: recorded actions and their proofs |
+| `http://localhost:8081/quarantine.html` | Quarantines | Agents under preventive restriction, and what was suspended |
+| `http://localhost:8081/governance.html` | Governance | Revocation proposals, who voted what, and under which threshold |
+| `http://localhost:8081/agent.html?id=…` | Agent card | Everything public about one identity |
 
-> La página de verificación es la única del sistema que **no hace falta creerle a nadie**. El código
-> que comprueba las firmas corre en tu navegador y se puede leer: son unos pocos cientos de líneas
-> sin librerías externas, en [`web/app/verify.js`](../web/app/verify.js).
+> The verify page is the only screen in the system you **do not have to take anyone's word for**. The
+> code that checks the signatures runs in your browser and can be read: a few hundred lines with no
+> external libraries, in [`web/app/verify.js`](../web/app/verify.js).
 
-### Probarlo con la línea de comandos
+### Trying it from the command line
 
-Preguntarle al sistema por una identidad que no existe:
+Asking the system about an identity that does not exist:
 
 ```bash
 curl -s http://localhost:8080/v1/verify/uai:agent:01ZZZZZZZZZZZZZZZZZZZZZZZZ
@@ -354,81 +352,80 @@ curl -s http://localhost:8080/v1/verify/uai:agent:01ZZZZZZZZZZZZZZZZZZZZZZZZ
 }
 ```
 
-Fijate en la última línea. **El silencio no es una acusación.** Que un sistema no conozca a un
-agente no significa que ese agente sea malicioso, y decirlo explícitamente evita que alguien lea lo
-contrario.
+Look at the last line. **Silence is not an accusation.** A system not knowing an agent does not mean
+that agent is malicious, and saying so explicitly stops anyone reading it the other way.
 
-### Las pruebas que se pueden correr
+### The tests you can run
 
-Cada una falla si algo anda mal. Ninguna es decorativa.
+Each one fails if something is wrong. None of them is decorative.
 
 ```bash
-make demo        # el escenario completo: 21/21 criterios
-make attested    # que el runtime lo certifique SPIRE y no el propio agente: 7/7
-make pentest     # 16 ataques desde afuera; falla si alguno funciona
-make invariants  # 88 operaciones prohibidas; falla si alguna se permite
-make check       # todo lo que tiene que pasar antes de un commit
+make demo        # the full scenario: 21/21 criteria
+make attested    # that SPIRE certifies the runtime, not the agent itself: 7/7
+make pentest     # 16 attacks from outside; fails if any of them works
+make invariants  # 88 forbidden operations; fails if any is allowed
+make check       # everything that has to pass before a commit
 ```
 
-**`make pentest`** es la más ilustrativa para alguien que quiere entender qué protege el sistema.
-Ataca a una API real desde afuera, con lo único que tendría un atacante: una identidad propia y
-legítima. Intenta reusar firmas, repetir pedidos capturados, bindear la identidad de otro, votar
-con una credencial real pero sin humano presente. Los 16 son rechazados, y el informe muestra
-cada uno con el error exacto.
+**`make pentest`** is the most illuminating for someone who wants to understand what the system
+protects. It attacks a real API from outside, holding the only thing an attacker would have: a
+legitimate identity of their own. It tries reusing signatures, replaying captured requests, binding
+somebody else's identity, voting with a real credential but no human present. All 16 are refused,
+and the report shows each one with the exact error.
 
-**`make invariants`** es la otra cara: pregunta qué le niega la **base de datos** a alguien que ya
-está adentro. Por ejemplo, que un administrador con acceso total no pueda editar una evidencia ni
-borrar un voto.
+**`make invariants`** is the other side: it asks what the **database** refuses to somebody who is
+already inside it. For example, that an administrator with full access can neither edit a piece of
+evidence nor delete a vote.
 
-### Verificar desde afuera, sin confiar en nosotros
+### Verifying from outside, without trusting us
 
-Esta es la prueba que más importa, y la que define si el proyecto sirve para algo:
+This is the test that matters most, and the one that decides whether the project is worth anything:
 
 ```bash
 go build -o uai-verify ./tools/uai-verify
 ./uai-verify uai:agent:01JY8R9ZAF392N7QX2T81JH6KM
 ```
 
-Esa herramienta **no confía en nada** salvo en tres claves públicas. Se baja lo público, rehace las
-cuentas y **recalcula el veredicto en vez de mostrarlo**. Si el sistema dijera que una identidad
-está revocada pero los votos no dieran 4 de 5, esta herramienta lo diría.
+That tool **trusts nothing** except three public keys. It fetches what is public, redoes the
+arithmetic and **recomputes the verdict instead of printing it**. If the system said an identity was
+revoked but the votes did not add up to 4 of 5, this tool would say so.
 
-Y cuando termina, aclara qué comprobó y qué no:
+And when it finishes, it states what it checked and what it did not:
 
-> *Esto dice que el registro es internamente consistente y está firmado por las claves que nombra —
-> no que las acciones descritas hayan tenido los efectos que dicen.*
+> *This says the record is internally consistent and signed by the keys it names — not that the
+> actions described in it had the effects they claim.*
 
 ---
 
-## 5. Qué está terminado y qué no
+## 5. What is finished and what is not
 
-Ser claro acá es parte del diseño: un proyecto de identidad que exagera lo que tiene pierde la
-credibilidad una sola vez.
+Being clear here is part of the design: an identity project that overstates what it has loses its
+credibility exactly once.
 
-### Terminado y probado
+### Finished and tested
 
-Identidad, credenciales, pasaportes, atestación de acciones, criptografía y vectores de referencia,
-guardarraíl con reglamento firmado, contratos y anclaje, las cinco pantallas, tres SDKs y servidor
-MCP, la demo de 21 criterios, los gates de seguridad, y atestación de runtime con SPIRE.
+Identity, credentials, passports, action attestation, cryptography and reference vectors, the
+guardrail with its signed rulebook, contracts and anchoring, the five surfaces, three SDKs and an
+MCP server, the 21-criteria demo, the security gates, and runtime attestation with SPIRE.
 
-### Lo que falta, y qué significa
+### What is missing, and what that means
 
-| Falta | Qué implica hoy |
+| Missing | What it implies today |
 |---|---|
-| **Prueba de control de dominio** | Cuando una empresa dice ser dueña de `empresa.com`, nadie lo comprueba. Es una afirmación |
-| **Aviso al dueño al registrar** | Si alguien registra un agente a nombre de tu empresa, queda visible pero nadie te avisa |
-| **Límites de frecuencia** | Nada frena a quien quiera registrar mil agentes o inundar de denuncias |
-| **Firma de artefactos (SBOM)** | Sabemos qué proceso corre, no de qué código fue construido |
-| **Contra-atestación** | Un agente que solo registra lo que le conviene deja huecos visibles, pero nadie los mira |
-| **Detección de clones entre instalaciones** | Se detecta en principio y no lo hace nadie |
+| **Domain-control proof** | When a company says it owns `company.com`, nobody checks. It is a claim |
+| **Notifying the owner on registration** | If somebody registers an agent in your company's name, it is visible but nobody tells you |
+| **Rate limits** | Nothing stops anyone registering a thousand agents or flooding the system with accusations |
+| **Artifact signing (SBOM)** | We know which process is running, not what code it was built from |
+| **Counter-attestation** | An agent that only records the flattering actions leaves visible gaps, but nobody looks at them |
+| **Cross-installation clone detection** | Detectable in principle, and detected by nobody |
 
-**Consecuencia directa y honesta:** el nivel de garantía es el **mínimo** entre tres dimensiones
-—cómo se guarda la llave, cómo se verificó al dueño, y cómo se certificó el runtime—. Como la
-verificación del dueño no existe todavía, **todas las identidades están en el nivel más bajo
-(AL0)**, incluso una con llave de hardware y runtime certificado.
+**The direct, honest consequence:** the assurance level is the **minimum** across three dimensions —
+how the key is held, how the owner was verified, and how the runtime was certified. Since owner
+verification does not exist yet, **every identity sits at the lowest level (AL0)**, even one with a
+hardware key and a certified runtime.
 
-El sistema no se limita a decir el nivel: dice **qué dimensión lo está frenando**. Consultando un
-agente registrado, la respuesta trae estos tres campos (la API responde en inglés):
+The system does not just state the level: it states **which dimension is holding it down**. Querying
+a registered agent, the response carries these three fields:
 
 ```json
 "assurance_level":      "UAI-AL0",
@@ -436,44 +433,42 @@ agente registrado, la respuesta trae estos tres campos (la API responde en ingl�
 "assurance_detail":     "the owner is self-asserted; nothing has demonstrated control of its DID"
 ```
 
-> *"el dueño es auto-declarado; nadie demostró control de su DID"*
+That is not a bug: it is the system refusing to assert something it cannot prove. A bare `UAI-AL0`
+would be indistinguishable from a misconfiguration; with the reason beside it, whoever reads it
+knows what would have to change, and the owner knows what to go and do.
 
-Eso no es un error: es el sistema negándose a afirmar algo que no puede probar. Un `UAI-AL0` a
-secas sería indistinguible de una mala configuración; con el motivo al lado, quien lo lee sabe qué
-tendría que cambiar, y el dueño sabe qué tiene que ir a hacer.
+### What is not real yet
 
-### Lo que todavía no es real
-
-Los testigos y los validadores corren todos en la misma máquina, así que **la independencia que da
-sentido a los testigos todavía no existe**. La prueba de fuego del proyecto no es técnica: es que
-*otra organización* opere un validador y un testigo en su propia infraestructura. Eso es la
-Fase 13.
+The witnesses and the validators all run on the same machine, so **the independence that gives
+witnesses their meaning does not exist yet**. The project's real test is not technical: it is that
+*another organization* operates a validator and a witness on its own infrastructure. That is
+Phase 13.
 
 ---
 
-## 6. Si algo no funciona
+## 6. If something does not work
 
-| Síntoma | Causa y solución |
+| Symptom | Cause and fix |
 |---|---|
-| `make dev` falla con `type "agent_status" already exists` | Base vieja sin registro de migraciones. `make migrate-baseline`, o `./deploy.sh nuke` para empezar de cero (borra los datos) |
-| `./deploy.sh up` se queda sin espacio | Los contenedores viejos dejan volúmenes huérfanos. `podman volume prune` los borra; revisá la lista antes, por si hay alguno de otro proyecto |
-| El gateway sale con `permission denied` sobre `/keys/issuer.jwk` | La clave se copia a un volumen del servicio al arrancar. Volver a correr `./deploy.sh up` lo rehace |
-| El gateway no arranca y habla de la clave del emisor | La clave nunca se genera sola al arrancar, a propósito: una clave que cambia en cada reinicio emite credenciales que después no validan. `make issuer-key` |
-| El gateway avisa `runtime attestation disabled` | Es normal y está bien. Sin SPIRE configurado registra runtimes auto-declarados; la advertencia existe para que la diferencia no sea invisible |
-| `make demo` dice que el puerto está ocupado | Quedó una corrida anterior. El propio target intenta limpiarla; si no, `make demo DEMO_PORT=9999` |
-| Todo raro después de tocar cosas | `make nuke && make dev` — borra los volúmenes y arranca limpio |
+| `make dev` fails with `type "agent_status" already exists` | An old database with no migration ledger. `make migrate-baseline`, or `./deploy.sh nuke` to start clean (this deletes the data) |
+| `./deploy.sh up` runs out of disk space | Old containers leave orphaned volumes behind. `podman volume prune` removes them; check the list first, in case one belongs to another project |
+| The gateway exits with `permission denied` on `/keys/issuer.jwk` | The key is copied into a service-owned volume at startup. Running `./deploy.sh up` again redoes it |
+| The gateway will not start and complains about the issuer key | The key is never generated at boot, on purpose: one that changed on every restart would issue credentials that later fail to verify. `make issuer-key` |
+| The gateway warns `runtime attestation disabled` | Normal and fine. Without SPIRE configured it records self-declared runtimes; the warning exists so the difference is not invisible |
+| `make demo` says the port is in use | A previous run is still around. The target tries to clean it up; if not, `make demo DEMO_PORT=9999` |
+| Everything is strange after poking at things | `make nuke && make dev` — deletes the volumes and starts clean |
 
 ---
 
-## 7. Para seguir
+## 7. Where to go next
 
-- [`README.md`](../README.md) — el resumen del proyecto
-- [`docs/protocol/`](protocol/) — la especificación completa, 26 secciones, en inglés
-- [`docs/protocol/13-threat-model.md`](protocol/13-threat-model.md) — qué puede salir mal, qué lo
-  frena, y qué controles **todavía no existen**
-- [`docs/security/pentest-checklist.md`](security/pentest-checklist.md) — qué se ataca
-  automáticamente y qué necesita una persona
-- [`SECURITY.md`](../SECURITY.md) — cómo reportar una vulnerabilidad
+- [`README.md`](../README.md) — the project summary
+- [`docs/protocol/`](protocol/) — the full specification, 26 sections
+- [`docs/protocol/13-threat-model.md`](protocol/13-threat-model.md) — what can go wrong, what stops
+  it, and which controls **do not exist yet**
+- [`docs/security/pentest-checklist.md`](security/pentest-checklist.md) — what is attacked
+  automatically and what needs a person
+- [`SECURITY.md`](../SECURITY.md) — how to report a vulnerability
 
-> Si encontrás una forma de romper alguna de las diez reglas del modelo de amenazas, ese es
-> exactamente el reporte que más queremos.
+> If you find a way to break any of the ten rules in the threat model, that is exactly the report we
+> most want.

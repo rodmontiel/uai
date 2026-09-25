@@ -10,6 +10,7 @@
 uai/
 ├── .github/workflows/         # CI: every gate here blocks (26.1 phase 11)
 ├── docs/
+│   ├── MANUAL.md  MANUAL.es.md  # user manual, English and Spanish, kept in step
 │   ├── protocol/              # this specification (26 sections)
 │   ├── integrators/           # integration guide, conformance, adapters
 │   ├── security/              # pentest checklist

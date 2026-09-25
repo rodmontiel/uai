@@ -552,8 +552,12 @@ fmt: ## Format Go sources
 threats: ## Check that every threat in §20.1 names evidence that exists
 	$(GO) test ./test/threatmodel/ -count=1
 
+.PHONY: manuals
+manuals: ## Check that both manuals describe the same software
+	$(GO) test ./test/docs/ -count=1
+
 .PHONY: check
-check: build lint test conformance vectors-check policy-verify threats ## Everything that must pass before a commit
+check: build lint test conformance vectors-check policy-verify threats manuals ## Everything that must pass before a commit
 
 ## ---------- container images ----------
 .PHONY: image

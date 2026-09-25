@@ -46,6 +46,12 @@ jobs:
         run: make policy-verify
       - name: the threat model matches the repository
         run: make threats
+      # The two manuals are one document in two languages. A translation drifts
+      # in one direction -- the language somebody is editing gets the new
+      # section -- and each file still reads perfectly well on its own, which is
+      # why it needs a gate rather than a convention.
+      - name: both manuals describe the same software
+        run: go test ./test/docs/ -count=1
       - name: every invariant has a negative test, in two layers
         run: make invariant-coverage
 

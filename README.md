@@ -44,7 +44,7 @@ stack, runs the ACME scenario and fails if any of the 21 MVP criteria is not dem
 
 [**`docs/MANUAL.md`**](docs/MANUAL.md) explains the whole system from the ground up for readers who
 do not program — what each component uses, what it is for, and what it is like — and walks through
-standing it up and testing it. It is written in Spanish; the specification below is in English.
+standing it up and testing it. Also in Spanish: [`docs/MANUAL.es.md`](docs/MANUAL.es.md).
 
 ## Specification
 
