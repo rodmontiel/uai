@@ -250,6 +250,12 @@ sería un diseño donde las acciones que salen mal no se registran.
 - **Python 3** con la librería `cryptography` — para la demo y el SDK.
 - **psql** — el cliente de PostgreSQL.
 
+> Si Go está instalado pero la terminal te dice `Command 'go' not found`, es que no está en tu
+> PATH. Una instalación común lo deja en `~/.local/go/bin`. Lo agregás para esta sesión con
+> `export PATH="$PATH:$HOME/.local/go/bin"`, o para siempre poniendo esa línea en `~/.bashrc`.
+> Los targets de `make` y `./deploy.sh` lo encuentran solos; esto hace falta únicamente para los
+> comandos que escribís vos.
+
 > Un contenedor es un programa empaquetado con todo lo que necesita, que corre aislado del resto de
 > la máquina. *Rootless* quiere decir que corre sin permisos de administrador: si algo sale mal,
 > el daño está acotado.
@@ -320,6 +326,85 @@ make run-web      # la interfaz, desde el código
 
 La diferencia: `./deploy.sh up` corre lo que está construido, `make dev` + `make run-*` corre lo
 que estás editando.
+
+### Registrar tu primer agente
+
+Una identidad no es algo que UAI reparta. Se crea con **dos firmas que nombran al mismo sujeto**:
+la del dueño, diciendo "este agente es mío", y la del propio agente, diciendo "esta llave es mía".
+Ninguna de las dos sola prueba nada, y por eso no hay un botón para esto.
+
+`uai-register` hace ese intercambio.
+
+**Paso 1 — crear un dueño.** El dueño es quien responde por el agente. Crearlo necesita la base de
+datos y no la API, y eso es a propósito: una ruta que pudiera llamar cualquiera haría que
+"registrado a nombre de un dueño" significara "registrado a nombre de lo que alguien tipeó".
+
+```bash
+export PG_DSN="postgres://uai:uai@localhost:5432/uai?sslmode=disable"
+go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.example
+```
+
+```
+  organization  did:web:acme.example
+  owner         did:uai:owner:01M3D4QCXVCDNFT1GATPY98FDW
+  key           .keys/owner.jwk
+```
+
+Esa llave firma por todos los agentes que cuelguen de ella. Es el único archivo acá cuya pérdida
+no se arregla volviendo a correr nada.
+
+**Paso 2 — registrar el agente.** Su llave se genera en tu máquina y nunca sale de ahí; solo viaja
+la mitad pública.
+
+```bash
+go run ./tools/uai-register agent -owner-did did:uai:owner:01M3D4QCXV… -name "RoutePlanner"
+```
+
+```
+  uai-id     uai:agent:01M3D51K666A82R8VRG7EAC1PB
+  status     REGISTERED
+  key        .keys/routeplanner.jwk
+```
+
+**REGISTERED, no ACTIVE.** Registrarse es una afirmación; el binding que viene después es la
+prueba. Un agente en ese estado todavía no puede atestar acciones.
+
+**Paso 3 — atar un runtime.** Es lo que dice *dónde* corre el agente, y lo lleva a ACTIVE.
+
+```bash
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk
+```
+
+Si tu stack tiene SPIRE encendido, ese comando se rechaza — y está bien. Un registro que verifica
+runtimes no acepta uno que el agente describe sobre sí mismo. Primero hay que darle a SPIRE el
+identificador del agente, y después presentar el certificado que emite:
+
+```bash
+make spire-entry ULID=01M3D51K666A82R8VRG7EAC1PB
+make spire-svid
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk -svid .spire/svid
+```
+
+```
+  status     ACTIVE
+  runtime    attested as spiffe://uai.test/agents/01M3D51K666A82R8VRG7EAC1PB/i/dev
+```
+
+> El orden no es caprichoso. Una entrada de registro de SPIRE nombra al agente, así que no puede
+> existir antes de que el agente tenga identificador — por eso el binding es un paso aparte y no
+> una opción.
+
+**Paso 4 — mirar lo que hiciste.**
+
+```bash
+go run ./tools/uai-register show
+```
+
+Y en el navegador, pegá el UAI-ID en `http://localhost:8081/verify.html`.
+
+> Cuando el gateway sirve TLS —cosa que hace siempre que la atestación está encendida— agregale
+> `-endpoint https://localhost:8080 -ca .spire/bootstrap.pem` a cada comando de `uai-register`.
+> `./deploy.sh status` te dice en cuál de los dos estás.
 
 ### Las cinco pantallas
 

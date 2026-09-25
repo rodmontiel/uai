@@ -83,17 +83,47 @@ issuer_key() {
 # as root. This does neither — a short-lived helper (which IS the host user
 # under rootless Podman, and root under Docker, so it can read the file either
 # way) copies the key into a volume and gives it to the service user.
-seed_issuer_key() {
-    step "handing the issuer key to the gateway"
+seed_secrets() {
+    step "handing the gateway its keys"
     "$CONTAINER" volume create uai_keys >/dev/null 2>&1 || true
+    # Always present, possibly empty: the mount below is unconditional, and a
+    # bind mount of a directory that does not exist fails the whole step on the
+    # path where attestation is simply off.
+    mkdir -p .spire/gateway
+    local script='cp /src/issuer.jwk /dst/issuer.jwk'
+    local what="issuer.jwk"
+    if [ -f .spire/gateway/tls.key ]; then
+        # The TLS key is a private key too, and leaving it 0644 on the host so a
+        # container could read it would be the same mistake in a nicer costume.
+        script="$script && cp /tls/tls.pem /dst/tls.pem && cp /tls/tls.key /dst/tls.key"
+        what="$what tls.pem tls.key"
+    fi
     "$CONTAINER" run --rm \
         -v uai_keys:/dst \
         -v "$PWD/.keys:/src:ro" \
+        -v "$PWD/.spire/gateway:/tls:ro" \
         --entrypoint sh \
         "$(pg_image)" -c \
-        'cp /src/issuer.jwk /dst/issuer.jwk && chown 65532:65532 /dst/issuer.jwk && chmod 400 /dst/issuer.jwk' \
+        "$script && chown 65532:65532 /dst/* && chmod 400 /dst/*" \
         >/dev/null
-    say "    uai_keys:/issuer.jwk  ${DIM}(0400, owned by the service user)${RESET}"
+    say "    uai_keys: $what  ${DIM}(0400, owned by the service user)${RESET}"
+}
+
+# mint_gateway_cert asks SPIRE for the gateway's own server certificate.
+#
+# Minted rather than self-signed so that both directions of the connection hang
+# off one trust root: the browser's proxy verifies the gateway against the same
+# bundle the gateway verifies agents against.
+mint_gateway_cert() {
+    step "minting the gateway's TLS certificate"
+    mkdir -p .spire/gateway
+    "${COMPOSE[@]}" exec -T spire-server /opt/spire/bin/spire-server x509 mint \
+        -spiffeID "spiffe://${SPIRE_TRUST_DOMAIN:-uai.test}/gateway" \
+        -dns uai-gateway -dns localhost -ttl 24h -write /tmp >/dev/null
+    "$CONTAINER" cp "${SPIRE_CONTAINER:-uai_spire-server_1}:/tmp/svid.pem" .spire/gateway/tls.pem
+    "$CONTAINER" cp "${SPIRE_CONTAINER:-uai_spire-server_1}:/tmp/key.pem" .spire/gateway/tls.key
+    chmod 600 .spire/gateway/tls.key
+    say "    spiffe://${SPIRE_TRUST_DOMAIN:-uai.test}/gateway  ${DIM}(dns: uai-gateway, localhost)${RESET}"
 }
 
 # pg_image is the postgres image the stack already pins, reused as the helper
@@ -119,28 +149,49 @@ up() {
 
     issuer_key
     build
-    seed_issuer_key
 
-    # SPIRE, when it is already running. Passed as environment rather than
-    # written into the compose file, so that a stack without attestation is a
-    # configuration and not a different file.
-    if [ -s .spire/bootstrap.pem ]; then
-        export UAI_SPIRE_BUNDLE=/spire/bootstrap.pem
-        export UAI_SPIRE_TRUST_DOMAIN="${SPIRE_TRUST_DOMAIN:-uai.test}"
-    else
-        export UAI_SPIRE_BUNDLE="" UAI_SPIRE_TRUST_DOMAIN=""
-    fi
-    mkdir -p .spire
-
-    # Infrastructure first, schema second, services third. `depends_on` waits
-    # for postgres to be HEALTHY, which is not the same as migrated: on a fresh
-    # volume the gateway came up against an empty database, failed on a missing
-    # table and exited, and the migrations that would have fixed it ran a second
-    # later against a container that was already gone.
+    # Infrastructure first: minting the gateway's certificate needs the SPIRE
+    # server answering, and the schema needs postgres.
     step "starting infrastructure"
     "${COMPOSE[@]}" up -d postgres spire-server >/dev/null 2>&1 \
         || "${COMPOSE[@]}" up -d postgres spire-server
 
+    # SPIRE, when it is already running. Passed as environment rather than
+    # written into the compose file, so that a stack without attestation is a
+    # configuration and not a different file.
+    mkdir -p .spire
+    if [ -s .spire/bootstrap.pem ]; then
+        export UAI_SPIRE_BUNDLE=/spire/bootstrap.pem
+        export UAI_SPIRE_TRUST_DOMAIN="${SPIRE_TRUST_DOMAIN:-uai.test}"
+        # An SVID is presented as a client certificate, so attestation needs TLS
+        # to have somewhere to put one. The gateway's own certificate is minted
+        # by the same SPIRE, which means one trust root in both directions: the
+        # client verifies the server against the bundle the server verifies
+        # clients against.
+        export UAI_TLS_CERT=/keys/tls.pem UAI_TLS_KEY=/keys/tls.key
+        # The scheme the gateway rebuilds signed request URIs with. It has to
+        # match what callers actually used: a gateway serving https while
+        # believing it is http rebuilds a different URI than the client signed,
+        # and every proof of possession fails with "signature verification
+        # failed" — which reads like a broken client.
+        export UAI_SCHEME=https
+        export UAI_API_URL="https://uai-gateway:8080" UAI_API_CA=/spire/bootstrap.pem
+        mint_gateway_cert
+    else
+        export UAI_SPIRE_BUNDLE="" UAI_SPIRE_TRUST_DOMAIN=""
+        export UAI_TLS_CERT="" UAI_TLS_KEY=""
+        export UAI_API_URL="http://uai-gateway:8080" UAI_API_CA=""
+        export UAI_SCHEME=http
+        rm -f .spire/gateway/tls.pem .spire/gateway/tls.key
+    fi
+    seed_secrets
+
+    # Schema before services. `depends_on` waits for postgres to be HEALTHY,
+    # which is not the same as migrated: on a fresh volume the gateway came up
+    # against an empty database, failed on a missing table and exited, and the
+    # migrations that would have fixed it ran a second later against a container
+    # that was already gone.
+    #
     # A real query, not pg_isready: postgres restarts itself during first-time
     # initialisation, so pg_isready can say yes to a server about to shut down.
     wait_for "postgres" "psql '$PG_DSN' -qtAc 'select 1'"
@@ -152,7 +203,13 @@ up() {
     step "starting the platform"
     "${COMPOSE[@]}" up -d >/dev/null 2>&1 || "${COMPOSE[@]}" up -d
 
-    wait_for "the gateway" "curl -sf http://127.0.0.1:$GATEWAY_PORT/v1/quarantines" 40
+    local scheme=http probe=""
+    [ -n "${UAI_TLS_CERT:-}" ] && scheme=https
+    # --cacert, not -k: a readiness probe that skips verification would report a
+    # gateway serving the wrong certificate as healthy.
+    [ "$scheme" = https ] && probe="--cacert .spire/bootstrap.pem"
+    wait_for "the gateway" \
+        "curl -sf $probe $scheme://localhost:$GATEWAY_PORT/v1/quarantines" 40
     wait_for "the web" "curl -sf http://127.0.0.1:$WEB_PORT/" 40
 
     say
@@ -196,7 +253,9 @@ status() {
     say
     say "  ${BOLD}ports${RESET}"
     printf '    %-28s %s\n' "http://localhost:$WEB_PORT" "the five surfaces"
-    printf '    %-28s %s\n' "http://localhost:$GATEWAY_PORT" "the API"
+    local api=http
+    [ -f .spire/gateway/tls.pem ] && api=https
+    printf '    %-28s %s\n' "$api://localhost:$GATEWAY_PORT" "the API"
     printf '    %-28s %s\n' "localhost:$PG_PORT" "PostgreSQL"
     say
     say "  ${BOLD}runtime attestation${RESET}"

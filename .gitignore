@@ -44,6 +44,7 @@ contracts/lib/
 /uai-keygen
 /uai-migrate
 /uai-policy
+/uai-register
 /uai-vectors
 /uai-verify
 /uai-mcp

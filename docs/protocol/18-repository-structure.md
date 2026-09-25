@@ -62,6 +62,7 @@ uai/
 ├── deploy/
 │   ├── compose/  containers/  spire/   # stack, images, SPIRE server and agent config
 ├── tools/
+│   ├── uai-register/          # create an owner, register agents, bind runtimes
 │   ├── uai-verify/            # standalone verification CLI (no UAI dependency)
 │   └── uai-conformance/       # runs test vectors against any implementation
 ├── test/

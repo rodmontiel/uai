@@ -140,6 +140,17 @@ func main() {
 		os.Exit(1)
 	}
 	if trust != nil {
+		// Attestation without TLS is a configuration in which binding can never
+		// succeed: the SVID arrives as a client certificate, and a plaintext
+		// listener has no place to put one. Every bind would fail closed with a
+		// correct-sounding error, and the operator would go looking at the
+		// agent. Refusing to start names the contradiction instead.
+		if *tlsCert == "" {
+			slog.Error("runtime attestation requires TLS",
+				"why", "an X509-SVID is presented as a client certificate, which plaintext cannot carry",
+				"fix", "pass -tls-cert and -tls-key, or drop -spire-bundle")
+			os.Exit(1)
+		}
 		opts = append(opts, api.WithSPIFFE(trust))
 		slog.Info("runtime attestation enabled", "trust_domain", trust.TrustDomain,
 			"ca_certificates", trust.Size())

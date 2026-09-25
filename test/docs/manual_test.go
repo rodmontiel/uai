@@ -28,7 +28,8 @@ var (
 	fenceRE   = regexp.MustCompile("(?m)^```")
 	// Commands a reader is told to run. If one manual says `./deploy.sh up` and
 	// the other still says `make run-gateway`, one of them is wrong.
-	commandRE = regexp.MustCompile(`(?m)^(\./deploy\.sh [a-z]+|make [a-z-]+|go build [^\n]*|curl -s [^\n]+)`)
+	commandRE = regexp.MustCompile(
+		`(?m)^(\./deploy\.sh [a-z]+|make [a-z-]+|go (build|run) [^\n]*|curl -s [^\n]+|export [A-Z_]+=[^\n]+)`)
 )
 
 func read(t *testing.T, path string) string {

@@ -249,6 +249,12 @@ be a design where the actions that go wrong do not get recorded.
 - **Python 3** with the `cryptography` library — for the demo and the SDK.
 - **psql** — the PostgreSQL client.
 
+> If `go` is installed but your shell says `Command 'go' not found`, it is not on your PATH. A
+> common install puts it in `~/.local/go/bin`. Add it for this session with
+> `export PATH="$PATH:$HOME/.local/go/bin"`, or permanently by putting that line in `~/.bashrc`.
+> The `make` targets and `./deploy.sh` find it on their own; only commands you type yourself need
+> this.
+
 > A container is a program packaged with everything it needs, running isolated from the rest of the
 > machine. *Rootless* means it runs without administrator privileges: if something goes wrong, the
 > damage is bounded.
@@ -319,6 +325,85 @@ make run-web      # the interface, from source
 
 The difference: `./deploy.sh up` runs what was built, `make dev` + `make run-*` runs what you are
 editing.
+
+### Registering your first agent
+
+An identity is not something UAI hands out. It is created by **two signatures naming the same
+subject**: the owner's, saying "this agent is mine", and the agent's own, saying "this key is
+mine". Neither alone proves anything, which is why there is no button for it.
+
+`uai-register` performs that exchange.
+
+**Step 1 — create an owner.** An owner is whoever answers for an agent. Creating one needs the
+database rather than the API, and that is deliberate: a route anyone could call would make
+"registered to an owner" mean "registered to a name somebody typed".
+
+```bash
+export PG_DSN="postgres://uai:uai@localhost:5432/uai?sslmode=disable"
+go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.example
+```
+
+```
+  organization  did:web:acme.example
+  owner         did:uai:owner:01M3D4QCXVCDNFT1GATPY98FDW
+  key           .keys/owner.jwk
+```
+
+That key signs for every agent under it. It is the one file here whose loss cannot be undone by
+re-running anything.
+
+**Step 2 — register the agent.** Its key is generated on your machine and never leaves it; only
+the public half is sent.
+
+```bash
+go run ./tools/uai-register agent -owner-did did:uai:owner:01M3D4QCXV… -name "RoutePlanner"
+```
+
+```
+  uai-id     uai:agent:01M3D51K666A82R8VRG7EAC1PB
+  status     REGISTERED
+  key        .keys/routeplanner.jwk
+```
+
+**REGISTERED, not ACTIVE.** Registration is a claim; the binding that follows it is the proof. An
+agent in this state cannot attest actions yet.
+
+**Step 3 — bind a runtime.** This is what says *where* the agent runs, and it takes the identity to
+ACTIVE.
+
+```bash
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk
+```
+
+If your stack has SPIRE on, that command is refused — correctly. A registry that verifies runtimes
+will not accept one the agent describes about itself. Give SPIRE the agent's identifier first, then
+present the certificate it issues:
+
+```bash
+make spire-entry ULID=01M3D51K666A82R8VRG7EAC1PB
+make spire-svid
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk -svid .spire/svid
+```
+
+```
+  status     ACTIVE
+  runtime    attested as spiffe://uai.test/agents/01M3D51K666A82R8VRG7EAC1PB/i/dev
+```
+
+> The order is not arbitrary. A SPIRE registration entry names the agent, so it cannot exist before
+> the agent has an identifier — which is why binding is a separate step and not a flag.
+
+**Step 4 — look at what you made.**
+
+```bash
+go run ./tools/uai-register show
+```
+
+And in the browser, paste the UAI-ID into `http://localhost:8081/verify.html`.
+
+> When the gateway serves TLS — which it does whenever attestation is on — add
+> `-endpoint https://localhost:8080 -ca .spire/bootstrap.pem` to every `uai-register` command.
+> `./deploy.sh status` says which one you are on.
 
 ### The five surfaces
 

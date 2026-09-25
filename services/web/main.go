@@ -9,6 +9,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"log/slog"
@@ -39,6 +41,7 @@ func main() {
 		addr   = flag.String("addr", envOr("UAI_WEB_ADDR", ":8081"), "listen address")
 		root   = flag.String("root", envOr("UAI_WEB_ROOT", "web"), "directory to serve")
 		apiURL = flag.String("api", envOr("UAI_API_URL", "http://127.0.0.1:8080"), "gateway to proxy /v1 to")
+		apiCA  = flag.String("api-ca", os.Getenv("UAI_API_CA"), "PEM CA bundle to verify the gateway's certificate with")
 	)
 	flag.Parse()
 
@@ -61,6 +64,27 @@ func main() {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	// When the gateway serves TLS with an SVID, its certificate chains to the
+	// SPIRE bundle and to nothing a public trust store knows. Handing the proxy
+	// that bundle is what lets it verify the gateway rather than skip the check
+	// -- and skipping it here would mean the one hop a browser cannot see is
+	// the one hop nobody authenticates.
+	if *apiCA != "" {
+		pem, err := os.ReadFile(*apiCA)
+		if err != nil {
+			slog.Error("cannot read the API CA bundle", "path", *apiCA, "err", err)
+			os.Exit(1)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			slog.Error("the API CA bundle contains no certificates", "path", *apiCA)
+			os.Exit(1)
+		}
+		proxy.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs: pool, MinVersion: tls.VersionTLS12,
+		}}
+		slog.Info("verifying the gateway against a private CA", "ca", *apiCA)
+	}
 	files := http.FileServer(http.Dir(abs))
 
 	mux := http.NewServeMux()
