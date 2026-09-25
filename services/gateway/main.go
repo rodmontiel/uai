@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/internal/translog"
+	"github.com/rodmontiel/uai/pkg/spiffe"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
 
@@ -38,6 +40,16 @@ func main() {
 		logOrigin  = flag.String("log-origin", envOr("UAI_LOG_ORIGIN", "uai.world/log/1"), "transparency log origin")
 		witnessN   = flag.Int("log-witnesses", 2, "number of local witnesses (MVP; production uses independent operators)")
 		minWitness = flag.Int("log-min-witnesses", 2, "co-signatures a checkpoint needs to count as fully witnessed")
+
+		// Runtime attestation (§9.1, phase 12). Both or neither: a bundle
+		// without a trust domain cannot tell a foreign SVID from a forged one,
+		// and a trust domain without a bundle verifies nothing.
+		spireBundle = flag.String("spire-bundle", os.Getenv("UAI_SPIRE_BUNDLE"),
+			"PEM trust bundle for the SPIRE trust domain; when set, binding requires an attested SVID")
+		spireDomain = flag.String("spire-trust-domain", os.Getenv("UAI_SPIRE_TRUST_DOMAIN"),
+			"SPIFFE trust domain this registry accepts SVIDs from")
+		tlsCert = flag.String("tls-cert", os.Getenv("UAI_TLS_CERT"), "PEM certificate to serve TLS with")
+		tlsKey  = flag.String("tls-key", os.Getenv("UAI_TLS_KEY"), "PEM private key for -tls-cert")
 	)
 	flag.Parse()
 
@@ -116,14 +128,34 @@ func main() {
 	slog.Info("transparency log open", "origin", tlog.Origin(), "size", tlog.Size(),
 		"witnesses", len(witnesses), "min_witnesses", *minWitness)
 
+	opts := []api.Option{
+		api.WithScheme(*scheme),
+		api.WithIssuer(*issuerDID, signer),
+		api.WithBundle(bundle),
+		api.WithTransparency(tlog),
+	}
+	trust, err := loadTrustBundle(*spireDomain, *spireBundle)
+	if err != nil {
+		slog.Error("runtime attestation misconfigured", "err", err)
+		os.Exit(1)
+	}
+	if trust != nil {
+		opts = append(opts, api.WithSPIFFE(trust))
+		slog.Info("runtime attestation enabled", "trust_domain", trust.TrustDomain,
+			"ca_certificates", trust.Size())
+	} else {
+		// Said out loud, every start. A registry recording runtimes the agents
+		// described themselves is a normal configuration and a weak one, and
+		// the difference is invisible unless somebody says it.
+		slog.Warn("runtime attestation disabled",
+			"effect", "bindings record self-declared runtimes and stay at the AL0 runtime dimension",
+			"hint", "set -spire-bundle and -spire-trust-domain")
+	}
+
 	srv := &http.Server{
-		Addr: *addr,
-		Handler: api.NewServer(db,
-			api.WithScheme(*scheme),
-			api.WithIssuer(*issuerDID, signer),
-			api.WithBundle(bundle),
-			api.WithTransparency(tlog),
-		).Routes(),
+		Addr:              *addr,
+		Handler:           api.NewServer(db, opts...).Routes(),
+		TLSConfig:         clientCertConfig(trust),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -133,8 +165,18 @@ func main() {
 	go purgeExpired(ctx, db)
 
 	go func() {
-		slog.Info("gateway listening", "addr", *addr, "scheme", *scheme)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		serving := "http"
+		if *tlsCert != "" {
+			serving = "https"
+		}
+		slog.Info("gateway listening", "addr", *addr, "scheme", *scheme, "serving", serving)
+		var err error
+		if *tlsCert != "" {
+			err = srv.ListenAndServeTLS(*tlsCert, *tlsKey)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("listen", "err", err)
 			stop()
 		}
@@ -180,4 +222,46 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// loadTrustBundle reads the SPIRE trust bundle, or returns nil when runtime
+// attestation is not configured.
+//
+// Half a configuration is an error rather than a default. A bundle with no
+// trust domain would accept an SVID from any domain that CA happens to sign
+// for, and a trust domain with no bundle would verify nothing while looking
+// like it was verifying something -- which is the worse of the two.
+func loadTrustBundle(trustDomain, path string) (*spiffe.Bundle, error) {
+	switch {
+	case trustDomain == "" && path == "":
+		return nil, nil
+	case trustDomain == "":
+		return nil, fmt.Errorf("-spire-bundle was given without -spire-trust-domain")
+	case path == "":
+		return nil, fmt.Errorf("-spire-trust-domain was given without -spire-bundle")
+	}
+	pemBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading the trust bundle: %w", err)
+	}
+	return spiffe.ParseBundle(trustDomain, pemBytes)
+}
+
+// clientCertConfig asks for a client certificate without requiring one.
+//
+// Requesting rather than requiring, because /verify, /trust-anchors and the DID
+// documents are unauthenticated by design -- a verification endpoint that
+// demanded a certificate would be a verification endpoint nobody could use. The
+// binding handler is what requires the SVID, and it refuses when none arrived.
+//
+// VerifyPeerCertificate is deliberately absent: crypto/tls would reject a
+// handshake whose client certificate does not chain to the bundle, and the
+// caller would see a TLS alert instead of a problem document saying which of
+// the four things went wrong. The chain is verified in pkg/spiffe, where the
+// refusal can be explained.
+func clientCertConfig(trust *spiffe.Bundle) *tls.Config {
+	if trust == nil {
+		return nil
+	}
+	return &tls.Config{ClientAuth: tls.RequestClientCert, MinVersion: tls.VersionTLS12}
 }

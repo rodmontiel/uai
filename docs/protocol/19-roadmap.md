@@ -21,12 +21,32 @@
 | **9** | SDK | Python + TypeScript + MCP server | The context-manager example from the brief runs |
 | **10** | Demo | ACME scenario, scripted | `make demo` reproduces all 21 criteria |
 | **11** | Security | Threat model validation, pentest checklist, invariant tests | Every INV negative test is blocking in CI |
-| **12** | Deployment | Compose hardened, then Kubernetes + SPIRE | `make dev` ≤ 5 min; k8s manifests deploy |
+| **12** | Runtime assurance | Compose hardened; SPIRE on rootless Podman; the gateway verifies SVIDs instead of believing them; assurance derived from evidence | `make dev` ≤ 5 min; a binding records a runtime SPIRE attested rather than one the agent declared; a forged `svid_spiffe_id` is refused; and `/verify` says which dimension holds the assurance level down |
+| **13** | Multi-party operation | Kubernetes manifests as **reference**, Vault, Envoy, PostgreSQL HA, independent validator and witness operators | A second organization operates a validator and a witness on its own infrastructure |
 
 Phases 0–11 are implemented. Phase 11 closed with `make pentest`, `make threats`,
 `make invariant-coverage` and a CI workflow in which every gate blocks — see
 [§20.4](13-threat-model.md#204-control-validation) for which controls exist and
 [§20.5](13-threat-model.md#205-controls-named-in-201-that-do-not-exist-yet) for which do not.
+
+**Why 12 and 13 are separate.** They were one row — "Compose hardened, then Kubernetes + SPIRE" —
+and that row mixed the thing the protocol needs with the thing a consortium needs. What UAI is
+missing is **SPIRE**: a binding today records a `svid_spiffe_id` and an `image_digest` that the
+agent signs *about itself*, which is the agent attesting its own runtime. Nothing has ever written
+`agents.assurance_level`, so every identity is `UAI-AL0` for life and the AL2 rules in the policy
+bundle cannot fire. Kubernetes contributes nothing to fixing that.
+
+[ADR-0001](../adr/0001-podman-rootless-runtime.md) already argued the point: rootless Podman was
+chosen as the reference runtime *so that the SPIFFE integration would be built on it*, because
+SPIRE's selectors are runtime-specific and choosing the runtime afterwards means choosing the root
+of the workload trust chain after building on top of it. Doing SPIRE on Kubernetes first would
+contradict that.
+
+What Kubernetes is actually for is §23.5's topology — Envoy, Vault with HSM, PostgreSQL HA,
+multi-region, validators operated by independent member organizations. That is phase 13, and its
+manifests are a **reference** rather than a gate: requiring a cluster to run UAI raises the
+integration cost that [§26.4](#264-what-would-make-this-fail) item 4 names as a way this fails,
+and each consortium operator runs their own infrastructure anyway.
 
 Ordering rationale: cryptography (5) comes *after* a first working backend (4) deliberately — the
 core is built against the spec's test vectors from phase 2, so phase 5 hardens and completes

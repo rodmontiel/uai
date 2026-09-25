@@ -238,15 +238,24 @@ func (s *Server) completeBinding(w http.ResponseWriter, r *http.Request, agent s
 
 	var runtime *store.RuntimeIdentity
 	if operation == challenge.OpBind {
+		// The runtime is established BEFORE anything is written. When this
+		// registry verifies runtimes, a bind that cannot present an SVID
+		// attesting this identity does not happen at all -- it does not happen
+		// and get recorded as weaker.
+		attested, refused := s.runtimeFor(r, agent.UAIID, req, now)
+		if refused != nil {
+			refused.write(w, r)
+			return
+		}
 		rid, err := uaiid.NewULID()
 		if err != nil {
 			WriteProblem(w, r, http.StatusInternalServerError, "UAI_INTERNAL", "Could not allocate a runtime identity.")
 			return
 		}
 		runtime = &store.RuntimeIdentity{
-			ID: "rt-" + rid.String(), AgentID: agent.ID, SpiffeID: req.SpiffeID,
-			CertHash: req.SVIDCertHash, ImageDigest: req.ImageDigest,
-			Attestor: "self-declared", ExpiresAt: now.Add(SVIDTTL),
+			ID: "rt-" + rid.String(), AgentID: agent.ID, SpiffeID: attested.SpiffeID,
+			CertHash: attested.CertHash, ImageDigest: attested.ImageDigest,
+			Attestor: attested.Attestor, ExpiresAt: attested.ExpiresAt,
 		}
 	}
 

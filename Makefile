@@ -45,6 +45,23 @@ COMPOSE ?= $(shell \
 # asserting the invariants against a different PostgreSQL than developers run is
 # how a version-specific trigger behaviour ships green and breaks on a laptop.
 PG_IMAGE := $(shell sed -n 's/.*image: \(docker.io\/library\/postgres.*\)/\1/p' $(COMPOSE_FILE))
+# The SPIRE agent runs on the host and must be the SAME build as the server in
+# the stack. Read from the compose file rather than pinned twice: two pins drift,
+# and a workload attestor one minor version from its server fails in ways that
+# look like the workload's fault.
+SPIRE_SERVER_IMAGE := $(shell sed -n 's|.*image: \(ghcr.io/spiffe/spire-server.*\)|\1|p' $(COMPOSE_FILE))
+# Pinned here by its own digest rather than derived from the server's: they are
+# different images with different digests, and deriving one from the other would
+# silently degrade to a floating tag -- an unreviewed dependency update run at
+# every setup, which is the compose file's stated rule and threat T-07.
+# `make spire-version-check` fails if the two versions drift apart.
+SPIRE_AGENT_IMAGE  ?= ghcr.io/spiffe/spire-agent:1.11.2@sha256:7561ee91bfe07812f335d5b9e564bbb2ab77ef601558898a23177f692db15fc1
+SPIRE_TRUST_DOMAIN ?= uai.test
+SPIRE_PORT         ?= 18081
+SPIRE_DIR          ?= .spire
+# The compose provider names containers <project>_<service>_<n>; podman-compose
+# and docker compose agree on it for this project.
+SPIRE_CONTAINER    ?= uai_spire-server_1
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 IMAGE    ?= localhost/uai-gateway:$(VERSION)
 # podman can build byte-reproducible images by fixing every timestamp; docker
@@ -60,7 +77,12 @@ help: ## Show this help
 
 ## ---------- environment ----------
 .PHONY: dev
-dev: up migrate seed ## Bring up the local stack, apply the schema and seed it
+dev: up migrate seed spire-up ## Bring up the local stack, apply the schema, seed it and attest it
+	@echo
+	@echo "The stack is up and SPIRE is attesting. To run the gateway against it:"
+	@echo "  make run-gateway UAI_SPIRE_BUNDLE=$(SPIRE_DIR)/bootstrap.pem \\"
+	@echo "                   UAI_SPIRE_TRUST_DOMAIN=$(SPIRE_TRUST_DOMAIN)"
+	@echo "Without those, bindings record self-declared runtimes (see 6.8)."
 
 .PHONY: runtime
 runtime: ## Show the detected container runtime and compose provider
@@ -84,12 +106,17 @@ up: ## Start infrastructure containers
 	@echo "ready"
 
 .PHONY: down
-down: ## Stop containers, keeping volumes
+down: spire-down ## Stop containers and the host SPIRE agent, keeping volumes
 	$(COMPOSE) down
 
 .PHONY: nuke
-nuke: ## Stop containers and delete volumes
+nuke: spire-down ## Stop containers and delete volumes
 	$(COMPOSE) down -v
+	@# The agent's state goes with the server's. An agent holding an SVID from
+	@# a CA that no longer exists reports failures that look like the workload's
+	@# fault.
+	@rm -rf $(SPIRE_DIR)/data $(SPIRE_DIR)/public $(SPIRE_DIR)/svid \
+		$(SPIRE_DIR)/bootstrap.pem $(SPIRE_DIR)/agent.log
 
 ## ---------- database ----------
 .PHONY: migrate
@@ -216,6 +243,148 @@ demo-down:
 	@test -f $(DEMO_KEYS)/gateway.pid && kill $$(cat $(DEMO_KEYS)/gateway.pid) 2>/dev/null || true
 	@rm -f $(DEMO_KEYS)/gateway.pid
 	@$(CONTAINER) rm -f uai-pg-demo >/dev/null 2>&1 || true
+
+## ---------- runtime attestation (SPIRE) ----------
+# §9.1 says the registry must "verify SVID chain + verify SVID subject matches
+# uai_id". These targets are what makes that possible locally: before them a
+# binding recorded a runtime the agent described about itself.
+
+.PHONY: spire-up
+spire-up: spire-version-check ## Start the SPIRE agent on the host and bootstrap it against the server
+	@$(COMPOSE) up -d spire-server
+	@echo "waiting for the SPIRE server..."
+	@for i in $$(seq 1 60); do \
+		$(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server healthcheck >/dev/null 2>&1 \
+			&& break; sleep 1; done
+	@mkdir -p $(SPIRE_DIR)/bin $(SPIRE_DIR)/data $(SPIRE_DIR)/public $(SPIRE_DIR)/svid
+	@# From the pinned image, not from a download. The agent decides which
+	@# process may hold which identity; fetching that binary over the network at
+	@# setup time would be the supply-chain hole this exists to close (T-07).
+	@test -x $(SPIRE_DIR)/bin/spire-agent || { \
+		echo "extracting spire-agent from $(SPIRE_AGENT_IMAGE)"; \
+		cid=$$($(CONTAINER) create $(SPIRE_AGENT_IMAGE)) && \
+		$(CONTAINER) cp "$$cid:/opt/spire/bin/spire-agent" $(SPIRE_DIR)/bin/spire-agent && \
+		$(CONTAINER) rm "$$cid" >/dev/null && chmod +x $(SPIRE_DIR)/bin/spire-agent; }
+	@# The CA bundle, out of band. Bootstrapping over an unauthenticated channel
+	@# would make the first connection the one worth attacking.
+	@$(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server bundle show > $(SPIRE_DIR)/bootstrap.pem
+	@test -s $(SPIRE_DIR)/bootstrap.pem || { echo "the SPIRE server returned no bundle"; exit 1; }
+	@# Guard and start in ONE shell. Make runs each recipe line in its own, so
+	@# an `exit 0` on the line above only ends that line -- the first version of
+	@# this printed "already running" and then started a second agent beside the
+	@# first, both answering the same socket.
+	@# The pidfile, not pgrep. `pgrep -f 'spire-agent run'` matches the shell
+	@# running the pgrep, because that string is in its own command line -- so
+	@# the guard always fired, and a pkill written the same way killed the
+	@# caller.
+	@if [ -f $(SPIRE_DIR)/agent.pid ] && kill -0 $$(cat $(SPIRE_DIR)/agent.pid) 2>/dev/null; then \
+		echo "the SPIRE agent is already running"; \
+	else \
+		token=$$($(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server token generate \
+			-spiffeID spiffe://$(SPIRE_TRUST_DOMAIN)/node/dev 2>/dev/null | sed 's/^Token: //'); \
+		test -n "$$token" || { echo "no join token"; exit 1; }; \
+		$(SPIRE_DIR)/bin/spire-agent run -config deploy/spire/conf/agent.conf \
+			-joinToken "$$token" > $(SPIRE_DIR)/agent.log 2>&1 & \
+		echo $$! > $(SPIRE_DIR)/agent.pid; \
+	fi
+	@for i in $$(seq 1 40); do test -S $(SPIRE_DIR)/public/api.sock && break; sleep 1; done
+	@test -S $(SPIRE_DIR)/public/api.sock || { \
+		echo "the SPIRE agent did not come up:"; tail -5 $(SPIRE_DIR)/agent.log; exit 1; }
+	@echo "SPIRE agent attested as $$(grep -o 'spiffe://$(SPIRE_TRUST_DOMAIN)/spire/agent/[^\"]*' \
+		$(SPIRE_DIR)/agent.log | head -1)"
+
+.PHONY: spire-version-check
+spire-version-check: ## Fail if the host agent and the stack's server are different versions
+	@server=$$(echo "$(SPIRE_SERVER_IMAGE)" | sed 's/.*spire-server:\([^@]*\).*/\1/'); \
+		agent=$$(echo "$(SPIRE_AGENT_IMAGE)" | sed 's/.*spire-agent:\([^@]*\).*/\1/'); \
+		if [ "$$server" != "$$agent" ]; then \
+			echo "SPIRE server is $$server and the host agent is $$agent."; \
+			echo "A workload attestor a version away from its server fails in ways"; \
+			echo "that look like the workload's fault. Pin both to the same release."; \
+			exit 1; \
+		fi; \
+		echo "SPIRE server and agent are both $$server"
+
+.PHONY: spire-down
+spire-down: ## Stop the host SPIRE agent (the server stays with the stack)
+	@test -f $(SPIRE_DIR)/agent.pid && kill $$(cat $(SPIRE_DIR)/agent.pid) 2>/dev/null || true
+	@rm -f $(SPIRE_DIR)/agent.pid
+
+.PHONY: spire-entry
+spire-entry: ## Register a workload entry: make spire-entry ULID=01JY… [INSTANCE=dev]
+	@test -n "$(ULID)" || { echo "usage: make spire-entry ULID=<26-char agent ULID>"; exit 1; }
+	@parent=$$(grep -o 'spiffe://$(SPIRE_TRUST_DOMAIN)/spire/agent/join_token/[a-f0-9-]*' \
+		$(SPIRE_DIR)/agent.log | head -1); \
+		test -n "$$parent" || { echo "no attested agent; run make spire-up"; exit 1; }; \
+		$(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server entry create \
+			-parentID "$$parent" \
+			-spiffeID "spiffe://$(SPIRE_TRUST_DOMAIN)/agents/$(ULID)/i/$(or $(INSTANCE),dev)" \
+			-selector "unix:uid:$$(id -u)" -x509SVIDTTL 3600
+
+.PHONY: spire-svid
+spire-svid: ## Fetch this process's SVID through the Workload API into .spire/svid/
+	@$(SPIRE_DIR)/bin/spire-agent api fetch x509 \
+		-socketPath $(SPIRE_DIR)/public/api.sock -write $(SPIRE_DIR)/svid
+
+## ---------- runtime attestation, end to end ----------
+ATT_PORT ?= 8090
+ATT_DSN  ?= postgres://uai:uai@localhost:55468/uai?sslmode=disable
+ATT_KEYS ?= $(SPIRE_DIR)/gateway
+
+.PHONY: attested
+attested: ## Prove a binding records a runtime SPIRE attested, and what that is worth
+	@$(MAKE) --no-print-directory spire-up
+	@$(MAKE) --no-print-directory attested-up
+	@trap '$(MAKE) --no-print-directory attested-down' EXIT; \
+		PG_DSN="$(ATT_DSN)" python3 demo/attested.py \
+			--endpoint https://localhost:$(ATT_PORT) --dsn "$(ATT_DSN)" \
+			--spire-dir $(SPIRE_DIR) --spire-container $(SPIRE_CONTAINER) \
+			--container $(CONTAINER) --trust-domain $(SPIRE_TRUST_DOMAIN)
+
+.PHONY: attested-up
+attested-up:
+	@$(CONTAINER) rm -f uai-pg-attested >/dev/null 2>&1 || true
+	@$(CONTAINER) run -d --name uai-pg-attested -e POSTGRES_USER=uai -e POSTGRES_PASSWORD=uai \
+		-e POSTGRES_DB=uai -p 127.0.0.1:55468:5432 $(PG_IMAGE) >/dev/null
+	@for i in $$(seq 1 60); do \
+		$(CONTAINER) exec uai-pg-attested psql -U uai -d uai -qtAc 'select 1' >/dev/null 2>&1 \
+			&& break; sleep 1; done
+	@for f in $$(ls db/migrations/*.up.sql db/seed/*.up.sql | sort); do \
+		$(CONTAINER) exec -i uai-pg-attested psql -U uai -d uai -v ON_ERROR_STOP=1 -q < $$f || exit 1; \
+	done
+	@mkdir -p $(ATT_KEYS) && chmod 700 $(ATT_KEYS)
+	@# The gateway's own TLS certificate is an SVID SPIRE minted for it, so the
+	@# client verifies the server against the SAME bundle the server verifies
+	@# clients against. One trust root, both directions -- which is the point of
+	@# a trust domain, and would be lost by pasting in a self-signed cert.
+	@# Written into /tmp, which already exists because the server's own API
+	@# socket lives there: the image is distroless, so there is no mkdir and no
+	@# shell to make a directory with.
+	@$(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server x509 mint \
+		-spiffeID spiffe://$(SPIRE_TRUST_DOMAIN)/gateway -dns localhost -ttl 1h \
+		-write /tmp >/dev/null
+	@$(CONTAINER) cp $(SPIRE_CONTAINER):/tmp/svid.pem $(ATT_KEYS)/tls.pem
+	@$(CONTAINER) cp $(SPIRE_CONTAINER):/tmp/key.pem $(ATT_KEYS)/tls.key
+	@test -f $(ATT_KEYS)/issuer.jwk || \
+		$(GO) run ./tools/uai-keygen -out $(ATT_KEYS)/issuer.jwk -did "$(ISSUER_DID)" >/dev/null
+	@stale=$$(ss -ltnp 2>/dev/null | grep ":$(ATT_PORT) " | grep -oP 'pid=\K[0-9]+' | head -1); \
+		if [ -n "$$stale" ]; then kill $$stale 2>/dev/null || true; sleep 1; fi
+	@PG_DSN="$(ATT_DSN)" $(GO) run ./services/gateway -addr 127.0.0.1:$(ATT_PORT) \
+		-scheme https -issuer-key $(ATT_KEYS)/issuer.jwk \
+		-spire-bundle $(SPIRE_DIR)/bootstrap.pem -spire-trust-domain $(SPIRE_TRUST_DOMAIN) \
+		-tls-cert $(ATT_KEYS)/tls.pem -tls-key $(ATT_KEYS)/tls.key \
+		> $(ATT_KEYS)/gateway.log 2>&1 & \
+		echo $$! > $(ATT_KEYS)/gateway.pid
+	@for i in $$(seq 1 40); do \
+		curl -sfk https://localhost:$(ATT_PORT)/v1/quarantines >/dev/null 2>&1 && break; sleep 1; done
+	@curl -sfk https://localhost:$(ATT_PORT)/v1/quarantines >/dev/null 2>&1 || { \
+		echo "the gateway did not come up:"; tail -8 $(ATT_KEYS)/gateway.log; exit 1; }
+
+.PHONY: attested-down
+attested-down:
+	@test -f $(ATT_KEYS)/gateway.pid && kill $$(cat $(ATT_KEYS)/gateway.pid) 2>/dev/null || true
+	@rm -f $(ATT_KEYS)/gateway.pid
+	@$(CONTAINER) rm -f uai-pg-attested >/dev/null 2>&1 || true
 
 ## ---------- the pentest ----------
 PENTEST_PORT ?= 8089

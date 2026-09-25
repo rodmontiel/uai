@@ -307,20 +307,31 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	case agent.Status == "ACTIVE" || agent.Status == "VERIFIED":
 		status = "UAI_VERIFIED"
 	}
+	// Derived from evidence on every read, not read from the column written at
+	// registration (§6.8). A relying party gets the level AND the dimension
+	// holding it there, because a bare UAI-AL0 is indistinguishable from a
+	// misconfiguration while "limited by owner verification" says what would
+	// have to change.
+	al := s.assuranceFor(r, agent.ID, s.now())
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	WriteJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"identity":             agent.UAIID,
 		"did":                  agent.DID,
 		"verified":             status == "UAI_VERIFIED",
 		"status":               status,
-		"assurance_level":      agent.AssuranceLevel,
+		"assurance_level":      al.Level.String(),
 		"quarantined":          quarantined,
 		"revoked":              revoked,
 		"primary_jurisdiction": agent.PrimaryJurisdiction,
 		"policy_version":       agent.PolicyVersion,
 		"as_of":                asOf,
 		"cache_max_age":        60,
-	})
+	}
+	if al.LimitedBy != "" {
+		out["assurance_limited_by"] = string(al.LimitedBy)
+		out["assurance_detail"] = al.Detail
+	}
+	WriteJSON(w, http.StatusOK, out)
 }
 
 func identityCard(a store.Agent) map[string]any {

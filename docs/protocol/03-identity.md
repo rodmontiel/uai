@@ -279,6 +279,19 @@ Relying parties need a compact way to express "how strongly is this identity est
 | **UAI-AL2** | Hardware-backed (TPM/Enclave/KMS) | Organization credential verified | SVID + workload attestation with image digest | Business operations, CRM, email |
 | **UAI-AL3** | HSM, FIPS 140-3 L3 or equivalent | Legal-entity verification + accredited registrar | Remote attestation of the execution environment | Financial movement, critical infrastructure, cross-border autonomy |
 
+The three columns are **conjunctive**: an identity is at the highest level whose every
+requirement it meets, which makes the level the *minimum* across the three dimensions. An agent
+with a hardware key and a SPIRE-attested runtime whose owner is still self-asserted is `UAI-AL0`,
+because owner verification is what it has least of.
+
+Stated here because leaving it implicit invites the other reading — that meeting any one column's
+requirement raises the level — and that reading would let workload attestation alone advertise an
+identity as suitable for "business operations, CRM, email".
+
+`GET /verify` therefore returns the level **and the dimension that holds it there**. A bare
+`UAI-AL0` is indistinguishable from a misconfiguration; `UAI-AL0, limited by owner verification`
+tells a relying party what would have to change, and tells the owner what to go and do.
+
 Capability grants and passports reference a **minimum** assurance level. A `wire.transfer`
 capability requiring AL3 cannot be exercised by an AL1 identity even if the capability was
 granted — the PDP checks both.

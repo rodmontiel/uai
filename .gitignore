@@ -27,6 +27,11 @@ raw/
 # issuer signing key: never committed
 .keys/
 
+# The SPIRE agent binary and its runtime state, extracted from the pinned
+# image by `make spire-up`. A binary in a commit is a supply-chain artifact
+# nobody reviewed (threat T-07).
+.spire/
+
 # foundry build output and vendored test library
 contracts/out/
 contracts/cache/

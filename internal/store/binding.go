@@ -239,3 +239,83 @@ func (db *DB) PurgeExpiredChallenges(ctx context.Context, before time.Time) (int
 	}
 	return tag.RowsAffected(), nil
 }
+
+// AssuranceInputs is the evidence §6.8 weighs, as the registry holds it.
+//
+// Raw strings rather than a decided level: what these mean is policy, and the
+// store's job is to say what is recorded, not what it is worth. The API layer
+// turns them into a level with pkg/assurance.
+type AssuranceInputs struct {
+	// KeyProtections of every currently-valid key, unordered.
+	//
+	// A list rather than a decided maximum: neither the enum's declaration
+	// order nor its alphabet is a strength order -- max() over it would rank
+	// TPM2 above HSM -- and which protection is stronger is a policy question
+	// that belongs in pkg/assurance, in one place.
+	KeyProtections []string
+	// Attestor that vouched for the live runtime, "self-declared" when the
+	// agent described its own, and "" when nothing is bound.
+	Attestor string
+	// ImageDigest recorded with that runtime, if any.
+	ImageDigest string
+	// OwnerVerification is how the owner was established. Constant today:
+	// nothing in the schema records domain control or a verified organization
+	// credential, which is exactly why every identity is AL0
+	// (docs/protocol/13-threat-model.md section 20.5).
+	OwnerVerification string
+}
+
+// AssuranceEvidence gathers what is known about one agent.
+func (db *DB) AssuranceEvidence(ctx context.Context, agentID string, now time.Time) (AssuranceInputs, error) {
+	in := AssuranceInputs{OwnerVerification: "SELF_ASSERTED"}
+
+	// Every key that is valid right now. An identity holding an HSM key is
+	// HSM-protected even if it also holds a software key it has not retired,
+	// and the caller decides that.
+	rows, err := db.pool.Query(ctx, `
+		SELECT protection::text
+		  FROM agent_keys
+		 WHERE agent_id = $1
+		   AND valid_from <= $2
+		   AND (valid_until IS NULL OR valid_until > $2)
+		   AND revoked_at IS NULL
+		   AND compromise_declared_at IS NULL`, agentID, now)
+	if err != nil {
+		return in, classify(err)
+	}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return in, classify(err)
+		}
+		in.KeyProtections = append(in.KeyProtections, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return in, classify(err)
+	}
+
+	// The live runtime binding. Released or expired rows are not evidence:
+	// an SVID the attestor has stopped vouching for says nothing about now.
+	var attestor, image *string
+	err = db.pool.QueryRow(ctx, `
+		SELECT attestor, image_digest
+		  FROM runtime_identities
+		 WHERE agent_id = $1 AND released_at IS NULL AND expires_at > $2
+		 ORDER BY bound_at DESC
+		 LIMIT 1`, agentID, now).Scan(&attestor, &image)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return in, nil
+	case err != nil:
+		return in, classify(err)
+	}
+	if attestor != nil {
+		in.Attestor = *attestor
+	}
+	if image != nil {
+		in.ImageDigest = *image
+	}
+	return in, nil
+}

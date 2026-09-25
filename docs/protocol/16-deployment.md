@@ -112,10 +112,15 @@ contributor runs.
 **Shipping today** (`deploy/compose/compose.yaml`):
 
 ```text
-postgres   PostgreSQL 16, pinned by manifest digest   schema + invariant guards (Phase 3)
+postgres       PostgreSQL 16, pinned by manifest digest   schema + invariant guards (Phase 3)
+spire-server   SPIRE 1.11.2, pinned by manifest digest    runtime attestation (Phase 12)
 ```
 
-That is the whole list. The nonce replay cache, the idempotency ledger and the event chain are
+That is the whole list, and the SPIRE **agent** is deliberately not on it: it runs on the host,
+started by `make spire-up` from the binary inside that same pinned image. A workload attestor
+derives identity from what it can observe about a process, and the workloads here — the gateway
+from `make run-gateway`, the agent in `make demo` — are host processes. An attestor in a
+container of its own would be attesting a view it does not share. The nonce replay cache, the idempotency ledger and the event chain are
 all PostgreSQL (`internal/store`); there is no message bus and no object store in the
 implemented phases.
 
@@ -127,7 +132,8 @@ implemented phases.
 | Phase 7 | `besu-1..4` (QBFT validators), `witness-1`, `witness-2` | nothing writes to a ledger or co-signs a checkpoint yet |
 | Phase 8 | `uai-web` | — |
 | Phase 10 | `uai-gateway` in-stack, for the ACME demo | the image exists now (`make image`); the demo wires it |
-| Phase 12 | `spire-server`, `spire-agent`, observability profile | — |
+| ~~Phase 12~~ | ~~`spire-server`~~ | **Shipped.** The agent runs on the host, not as a service — see above |
+| Phase 13 | observability profile (OTel collector, Prometheus, Grafana, Loki) | nothing emits traces or metrics yet |
 
 Images are pinned by multi-arch manifest digest rather than by tag. A floating tag is an
 unreviewed dependency update executed on every `up` (threat **T-07**), and it makes "works on
@@ -141,12 +147,21 @@ The Makefile follows the same rule — a target exists only when it works:
 make runtime     # show the detected runtime, compose provider and image tags
 make up          # start the infrastructure containers
 make migrate     # apply the schema
-make dev         # up + migrate + seed
+make dev         # up + migrate + seed + spire-up
 make image       # build the gateway image (rootless, scratch-based, reproducible)
 make test        # Go unit tests
 make integration # throwaway PostgreSQL + store/API tests with -race + the invariants
 make invariants  # assert that the forbidden operations fail
+
+make spire-up    # start the host SPIRE agent and bootstrap it against the server
+make spire-entry ULID=01JY…   # register which process may hold which identity
+make attested    # prove a binding records a runtime SPIRE attested, and what that is worth
 ```
+
+`make dev` leaves the stack attesting, and prints the two flags the gateway needs to verify
+SVIDs. Without them the gateway starts anyway and logs a warning saying bindings will record
+self-declared runtimes — a normal configuration and a weak one, and the difference is invisible
+unless something says it out loud.
 
 Every container target honours `CONTAINER=docker`. The throwaway integration database is not
 pinned separately: `PG_IMAGE` is parsed out of `compose.yaml`, because asserting the invariants
@@ -172,7 +187,12 @@ gate rather than an aspiration.
 The trade-off is accepted deliberately: you cannot `exec` a shell into this image to debug it.
 That is the property, not a defect — it is why the gateway emits structured logs.
 
-## 23.5 Production — Kubernetes + SPIRE
+## 23.5 Production — multi-party operation
+
+> Phase 13, not 12. SPIRE belongs to phase 12 and runs on rootless Podman
+> ([§23.4](#234-local-development--rootless-podman-first)); what follows is the topology a
+> consortium needs, and Kubernetes is offered as a reference for operators who already run one —
+> never as a requirement for running UAI.
 
 | Concern | Approach |
 |---|---|

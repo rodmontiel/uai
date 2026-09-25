@@ -40,6 +40,13 @@ func b64urlDecode(s string) ([]byte, error) { return base64.RawURLEncoding.Decod
 
 // registered creates an agent in REGISTERED: registration done, nothing proved.
 func (e *env) registered(t *testing.T) store.Agent {
+	agent, _ := e.registeredWithKey(t)
+	return agent
+}
+
+// registeredWithKey also returns the agent's signer, for tests that have to act
+// as the agent rather than merely look at it.
+func (e *env) registeredWithKey(t *testing.T) (store.Agent, uaicrypto.Signer) {
 	t.Helper()
 	id := ulid("A")
 	agent := store.Agent{
@@ -50,7 +57,7 @@ func (e *env) registered(t *testing.T) store.Agent {
 		IdentityCommitment: "sha256:" + repeat64('a'), PolicyVersion: "GASC-2027.4",
 		GenesisEventHash: "sha256:" + repeat64('b'), Status: "REGISTERED",
 	}
-	_, pub, err := uaicrypto.GenerateEd25519Signer(agent.DID + "#key-1")
+	signer, pub, err := uaicrypto.GenerateEd25519Signer(agent.DID + "#key-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +69,7 @@ func (e *env) registered(t *testing.T) store.Agent {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return agent
+	return agent, signer
 }
 
 func (e *env) verifyVerdict(t *testing.T, uaiID string) map[string]any {

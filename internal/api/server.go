@@ -10,6 +10,7 @@ import (
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/internal/translog"
 	"github.com/rodmontiel/uai/pkg/attest"
+	"github.com/rodmontiel/uai/pkg/spiffe"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
 )
@@ -55,6 +56,9 @@ type Server struct {
 	// PDP that permitted anything while it had no rules would be worse than
 	// one that was simply down.
 	bundle *pdp.Bundle
+	// spiffe is the trust bundle runtime attestation is checked against, or
+	// nil when this registry records self-declared runtimes (§6.8).
+	spiffe *spiffe.Bundle
 	// governanceOrigin and governanceRPID are what a delegate's authenticator
 	// must have scoped its assertion to. They are configuration rather than
 	// constants because a deployment runs its governance UI somewhere: an
@@ -121,6 +125,19 @@ func WithRevoker(r Revoker, chainID int64) Option {
 
 // WithClock overrides the clock, for tests.
 func WithClock(f func() time.Time) Option { return func(srv *Server) { srv.now = f } }
+
+// WithSPIFFE makes runtime attestation mandatory for binding.
+//
+// Without a bundle the registry records what the agent says about where it
+// runs, marks it "self-declared", and the runtime dimension of §6.8 stays at
+// zero. With one, a bind must present an X509-SVID this bundle verifies, and
+// the runtime is read off the certificate.
+//
+// It is an option rather than a requirement because a registry that refused to
+// start without SPIRE would stop `make dev` working, and the assurance level
+// already reports the difference honestly -- which is what assurance levels
+// are for.
+func WithSPIFFE(b *spiffe.Bundle) Option { return func(srv *Server) { srv.spiffe = b } }
 
 // NewServer builds the HTTP surface.
 func NewServer(db *store.DB, opts ...Option) *Server {

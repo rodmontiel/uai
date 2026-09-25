@@ -166,6 +166,48 @@ jobs:
       - name: attack it
         run: make CONTAINER=docker pentest
 
+  # ── runtime attestation against a real SPIRE ────────────────────────────────
+  attested:
+    name: runtime attestation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the Python SDK's one dependency
+        run: pip install cryptography
+      - name: install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: the host agent and the stack's server are the same version
+        run: make spire-version-check
+      # Real SPIRE: a real CA, a real join-token node attestation, and an SVID
+      # fetched through the Workload API — so the identity comes from what the
+      # kernel told the attestor about the process, not from what the process
+      # said about itself. `make attested` fails if a genuine SVID can bind a
+      # different agent, or if attestation silently raises the assurance level.
+      - name: bindings record attested runtimes
+        run: make CONTAINER=docker attested
+
+      # The phase 12 gate: clone to a working, attesting stack in five minutes.
+      # Measured rather than asserted — the number is the deliverable.
+      - name: make dev is under five minutes
+        run: |
+          make CONTAINER=docker nuke >/dev/null 2>&1 || true
+          start=$(date +%s)
+          make CONTAINER=docker dev
+          elapsed=$(( $(date +%s) - start ))
+          echo "make dev took ${elapsed}s"
+          if [ "$elapsed" -gt 300 ]; then
+            echo "The phase 12 gate is 300s. A stack nobody can stand up in five minutes"
+            echo "is a stack people skip, and then nothing below it is ever run."
+            exit 1
+          fi
+
   # ── the 21 MVP criteria ─────────────────────────────────────────────────────
   demo:
     name: demo

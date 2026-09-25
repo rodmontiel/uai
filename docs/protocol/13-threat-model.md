@@ -123,11 +123,11 @@ path named here has to exist, and every status has to come from the vocabulary a
 |---|---|---|---|
 | T-01 | PARTIAL | `internal/api/registration.go`, `pkg/challenge/` | Registration issues a challenge that the agent's key and the owner's key must each answer. Domain-control proof for `did:web` and notification to the claimed owner do not exist |
 | T-02 | ACCEPTED | `internal/store/store.go` (`ErrFork`), `internal/api/binding.go` | Rotation keeps history; key validity is time-bounded and checked at signing time, not at reading time. A stolen software key still produces valid attestations until it is declared |
-| T-03 | PARTIAL | `db/migrations/0001_init.up.sql` (chain unique index), `internal/store/binding.go` | Two committed events cannot share a predecessor inside one deployment, and a binding records the SPIFFE ID and image digest. Cross-instance fork detection — the case that matters — is an observation nothing performs yet |
+| T-03 | PARTIAL | `pkg/spiffe/`, `internal/api/runtime.go`, `demo/attested.py` | The SPIFFE ID in a binding is now read off an SVID SPIRE issued to that process, so a clone cannot claim the original's runtime: `make attested` shows a genuine SVID refused for another agent. The image digest is still the agent's own claim, and cross-instance fork detection — the case that matters most — is an observation nothing performs yet |
 | T-04 | PARTIAL | `internal/api/registration.go` | Assurance level is carried and published, so a relying party can refuse AL0. Per-owner registration rate limits do not exist |
 | T-05 | PARTIAL | `internal/api/credentials.go` | Organization credentials are issued and logged. Legal-entity verification and `did:web` domain control are not implemented |
 | T-06 | ENFORCED | `internal/api/escalate.go`, `test/invariants/invariants.sql` (QUAR) | A quarantine order names the agent and the capabilities it suspends; nothing in it reaches another organization's agents |
-| T-07 | PLANNED | — | SPIFFE workload attestation is recorded at binding time, but SBOM, artifact signing and provenance attestation do not exist. This is the largest gap in the register |
+| T-07 | PARTIAL | `deploy/spire/conf/agent.conf`, `pkg/spiffe/spiffe.go` | A workload attestor derives identity from what the kernel reports about a process — facts it cannot assert about itself — and the registry refuses a binding whose SVID does not verify. SBOM, artifact signing and provenance attestation still do not exist, so what runs is attested and what it was BUILT from is not |
 
 ### Protocol and message threats
 
@@ -177,6 +177,7 @@ threats beside it above what §20.1 records:
 | SBOM, artifact signing, provenance attestation | T-07 | A compromised build reaches production with a valid identity, because nothing ties the running image to a reviewed source |
 | Counter-attestation by relying parties | T-11 | Selective non-attestation leaves gaps that are visible only to whoever goes looking |
 | Cross-instance fork observation | T-03 | A cloned agent is detectable in principle and detected by nobody |
+| An attestor-supplied image digest | T-03, T-07 | `image_digest` in a binding is the agent's claim about its own code. §6.8 wants the one the attestor observed, and until a selector supplies it the runtime dimension stops at AL1 |
 
 None of these is hard in the sense of being unsolved. They are listed because a threat model that
 describes intentions in the present tense is the specific failure mode this project has committed

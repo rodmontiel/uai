@@ -102,11 +102,22 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Derived, not read from the column. A guardrail rule that requires AL2
+	// has to be answered with what this identity can currently demonstrate,
+	// and the stored column has never been anything but its registration-time
+	// value (§6.8).
+	al := s.assuranceFor(r, agent.ID, now)
+
 	input := map[string]any{
 		"identity": map[string]any{
-			"did": agent.DID, "assurance_level": agent.AssuranceLevel, "status": agent.Status,
+			"did": agent.DID, "assurance_level": al.Level.String(), "status": agent.Status,
 		},
-		"runtime": map[string]any{"bound": len(runtimes) > 0},
+		// Whether a runtime is bound, and whether anyone but the agent says so.
+		// A rule that only asked "bound" would treat a self-declared runtime as
+		// evidence, which is what phase 12 exists to stop.
+		"runtime": map[string]any{
+			"bound": len(runtimes) > 0, "attestation": string(runtimeAttestationOf(al)),
+		},
 		"action": map[string]any{
 			"capability": req.Action.Capability, "purpose": req.Action.Purpose,
 			"resource": req.Action.Resource,

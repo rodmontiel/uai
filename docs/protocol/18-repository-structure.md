@@ -57,7 +57,9 @@ uai/
 ├── mcp/                       # uai-mcp server
 ├── deploy/
 │   ├── compose/  k8s/  spire/  besu/
-├── demo/                      # ACME end-to-end scenario
+├── demo/                      # ACME end-to-end scenario + the attestation gate
+├── deploy/
+│   ├── compose/  containers/  spire/   # stack, images, SPIRE server and agent config
 ├── tools/
 │   ├── uai-verify/            # standalone verification CLI (no UAI dependency)
 │   └── uai-conformance/       # runs test vectors against any implementation

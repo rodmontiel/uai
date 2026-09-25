@@ -225,3 +225,23 @@ autores angostó el protocolo sin decirlo.
     todas las revisiones de la aplicación. El digest se reconstruye desde el statement — el
     valor incluido — así que cambiarlo rompe la firma. El nonce se guarda porque sin él no se
     puede reconstruir nada, y ese era el motivo real del `_ = statement` que estaba en el código.
+29. **Atestación no es emisión, y una columna no es un nivel.** SPIRE aporta la tercera columna
+    de §6.8; AL2 pide las tres. Escribí el gate de la Fase 12 como "un agente llega a AL2 porque
+    su runtime fue atestiguado" y era falso: los `owners` no tienen ningún campo de verificación,
+    así que todo el registro está topeado en AL0. Las tres columnas son conjuntivas y el nivel es
+    el mínimo; ahora está dicho en la spec, porque dejarlo implícito invitaba la lectura que deja
+    que la atestación de workload sola anuncie una identidad como apta para operaciones de
+    negocio.
+30. **Un selector que matchea varias entradas emite varios SVIDs.** El workload recibe uno por
+    cada entrada que le corresponde, y leer `svid.0.pem` devuelve el que SPIRE contestó primero.
+    Mi script lo hacía y habría pasado como "la atestación funciona" mientras bindeaba la
+    identidad equivocada. Un agente tiene que elegir el SVID que **lo nombra**.
+31. **Cada línea de receta de Make es su propio shell.** Un `exit 0` en un guard termina esa
+    línea, no el target: la primera versión de `spire-up` imprimía "ya está corriendo" y
+    arrancaba un segundo agente al lado del primero.
+32. **`pgrep -f` y `pkill -f` matchean el proceso que los corre.** El patrón está en su propia
+    línea de comando. Me maté el shell tres veces seguidas antes de aceptarlo. Para procesos
+    propios: el pidfile. Para matar por nombre: `pkill -x`.
+33. **El `expires_at` sale del certificado, no de una constante.** El binding guardaba
+    `now + SVIDTTL` con SVIDTTL de una hora; un SVID que expira en cinco minutos habría quedado
+    registrado como runtime vigente mucho después de que el atestador dejó de responder por él.
