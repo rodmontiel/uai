@@ -21,7 +21,7 @@ func sample() attest.Attestation {
 		EventID:    "01JY8RA3C7K2V9M0QW4T6Z8XPD",
 		AgentDID:   agentDID,
 		OwnerDID:   ownerDID,
-		Timestamp:  time.Date(2026, 9, 22, 14, 2, 4, 0, time.UTC),
+		Timestamp:  attest.NewTimestamp(time.Date(2026, 9, 22, 14, 2, 4, 0, time.UTC)),
 		Nonce:      "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
 		Action:     attest.Action{Type: "route.optimize", Capability: "route.optimize"},
 		Purpose:    "delivery_optimization",

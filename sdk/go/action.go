@@ -235,7 +235,7 @@ func (c *Client) attestInto(ctx context.Context, rec *Record, in Intent, out any
 			EventID:    "evt-" + Nonce(),
 			AgentDID:   c.agentDID, OwnerDID: c.ownerDID,
 			RuntimeIdentity: in.RuntimeIdentity,
-			Timestamp:       c.now().UTC(), Nonce: Nonce(),
+			Timestamp:       attest.NewTimestamp(c.now()), Nonce: Nonce(),
 			Action: attest.Action{
 				Type: in.actionType(), Resource: in.Resource,
 				Capability: in.Capability, RiskClass: in.RiskClass,

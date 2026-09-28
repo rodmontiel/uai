@@ -193,7 +193,7 @@ func mustAttest(t *testing.T, signer uaicrypto.Signer, agent api.RegisteredAgent
 	a := attest.Attestation{
 		UAIVersion: attest.Version, EventID: ulid("E"),
 		AgentDID: agent.DID, OwnerDID: "did:uai:owner:" + ulid("W"),
-		Timestamp: time.Now().UTC(), Nonce: nonce(),
+		Timestamp: attest.NewTimestamp(time.Now()), Nonce: nonce(),
 		Action:  attest.Action{Type: "route.optimize", Capability: "route.optimize"},
 		Purpose: "delivery_optimization",
 		Jurisdiction: attest.Jurisdiction{

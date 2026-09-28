@@ -860,7 +860,7 @@ func signingPayloadVectors() (any, error) {
 		EventID:    "01JY8RA3C7K2V9M0QW4T6Z8XPD",
 		AgentDID:   "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
 		OwnerDID:   "did:uai:owner:01JY8R9ZB00000000000000000",
-		Timestamp:  time.Date(2026, 9, 22, 14, 7, 11, 0, time.UTC),
+		Timestamp:  attest.NewTimestamp(time.Date(2026, 9, 22, 14, 7, 11, 0, time.UTC)),
 		Nonce:      "8f1c2b9d4e6a7c3f0b1d2e3a4c5b6d7e",
 		Action: attest.Action{
 			Type: "route.optimize", Capability: "route.optimize", RiskClass: "LOW",

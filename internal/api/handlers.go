@@ -94,7 +94,7 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 		Outcome:             string(a.Outcome),
 		PreviousEventHash:   a.PreviousEventHash,
 		EventHash:           eventHash,
-		AssertedAt:          a.Timestamp,
+		AssertedAt:          a.Timestamp.Time,
 	}
 	if a.Passport != nil {
 		ev.PassportRequired = a.Passport.Required
@@ -152,7 +152,7 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 		// is the authority, and a large divergence is itself a signal.
 		"log_time":     logTime.Format(time.RFC3339Nano),
 		"asserted_at":  a.Timestamp.UTC().Format(time.RFC3339Nano),
-		"clock_skew_s": int64(logTime.Sub(a.Timestamp).Seconds()),
+		"clock_skew_s": int64(logTime.Sub(a.Timestamp.Time).Seconds()),
 	})
 }
 
