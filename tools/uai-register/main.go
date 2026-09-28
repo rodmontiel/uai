@@ -171,9 +171,22 @@ func createOwner(args []string) error {
 	}
 	ownerDID := "did:uai:owner:" + id.String()
 	if _, statErr := os.Stat(*keyPath); statErr == nil {
-		return fmt.Errorf("%s already exists. An owner key is what vouches for every agent under "+
-			"it; overwriting one orphans them all. Delete it deliberately, or pass -key elsewhere",
-			*keyPath)
+		// Refusing is right; refusing without saying what to do instead is not.
+		// The usual reason this file exists is that the owner was already
+		// created, and the next step is to use it -- so look up which one it is
+		// and hand back the command.
+		msg := fmt.Sprintf("%s already exists. An owner key is what vouches for every agent "+
+			"under it; overwriting one orphans them all.", *keyPath)
+		if did, lookupErr := ownerOfKey(ctx, db, *keyPath); lookupErr == nil && did != "" {
+			return fmt.Errorf("%s\n\n  That key belongs to %s, which already exists.\n"+
+				"  You do not need a new owner. Register an agent under it:\n\n"+
+				"    uai-register agent -owner-did %s -name \"MyAgent\"\n\n"+
+				"  `uai-register show` lists what this database already holds.",
+				msg, did, did)
+		}
+		return fmt.Errorf("%s\n\n  No owner in this database uses it, so it is a key without a "+
+			"record -- from another database, or from one that was deleted.\n"+
+			"  Move it aside, or pass -key somewhere else.", msg)
 	}
 	if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
 		return err
@@ -240,6 +253,42 @@ func createOwner(args []string) error {
 	fmt.Println("  The owner key signs for every agent under it. It is the one file here")
 	fmt.Println("  whose loss cannot be undone by re-running anything.")
 	return nil
+}
+
+// ownerOfKey reports which owner a private key file belongs to, by matching its
+// public half against what the registry recorded.
+func ownerOfKey(ctx context.Context, db *store.DB, keyPath string) (string, error) {
+	jwk, err := keyfile.PublicJWK(keyPath)
+	if err != nil {
+		return "", err
+	}
+	thumb, err := jwk.ThumbprintString()
+	if err != nil {
+		return "", err
+	}
+	rows, err := db.Pool().Query(ctx, `
+		SELECT o.did, k.public_jwk FROM owner_keys k JOIN owners o ON o.id = k.owner_id`)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var did string
+		var raw []byte
+		if err := rows.Scan(&did, &raw); err != nil {
+			return "", err
+		}
+		var stored uaicrypto.JWK
+		if json.Unmarshal(raw, &stored) != nil {
+			continue
+		}
+		// Compared by thumbprint rather than by bytes: the same key can be
+		// serialized with different member order and still be the same key.
+		if s, err := stored.ThumbprintString(); err == nil && s == thumb {
+			return did, nil
+		}
+	}
+	return "", nil
 }
 
 // ── agent ───────────────────────────────────────────────────────────────────
