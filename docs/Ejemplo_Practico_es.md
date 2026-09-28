@@ -53,6 +53,14 @@ Pegá esas tres líneas en tu terminal. Si `UAI_ENDPOINT` dice `http://` en vez 
 atestación está apagada: el ejemplo funciona igual, pero el paso 3 va a registrar un runtime
 *auto-declarado* en lugar de uno atestiguado, y el documento lo aclara cuando llega ahí.
 
+> **Estas variables viven en esa terminal y en ninguna otra.** Si abrís una ventana nueva, o
+> volvés mañana, volvé a pegarlas. Los comandos que las necesitan te lo dicen —`no database: pass
+> -dsn or set PG_DSN`— pero es más rápido saberlo antes. Un atajo para no acordarte:
+>
+> ```bash
+> eval "$(./deploy.sh env)"
+> ```
+
 Para encenderla:
 
 ```bash
@@ -224,12 +232,21 @@ Para ver las herramientas ahora mismo, sin tocar la configuración de Claude Cod
 identidad y usá el envoltorio:
 
 ```bash
+# Si abriste una terminal nueva, primero esto:
+eval "$(./deploy.sh env)"
+
 export UAI_AGENT_ID="uai:agent:01M3MMR4CN58329M3RXQ9YXETK"
 export UAI_AGENT_KEY=".keys/miprimeragente.jwk"
 export UAI_OWNER_DID="did:uai:owner:01M3KY9S364H567V267AFWSM7F"
 
 ./tools/uai-mcp-call.sh --list
 ```
+
+> `uai-mcp-call.sh` averigua sola la dirección del gateway si no se la das, así que las dos
+> llamadas de abajo andan aunque te hayas olvidado. Las herramientas que van a la base
+> (`uai-register`, `uai-grant`) no pueden: te lo dicen con `no database: pass -dsn or set
+> PG_DSN`. También acepta `-endpoint`, `-ca`, `-uai-id` y `-key` en la línea de comando, antes o
+> después del nombre de la herramienta.
 
 ```
   uai_verify_identity      Verify a UAI identity
@@ -587,6 +604,8 @@ preguntar.
 | Querés una prueba limpia sin datos | `./deploy.sh nuke` borra la base y deja las llaves; `./deploy.sh nuke --keys` borra también las llaves, nombrando cada archivo |
 | `capability_not_granted` | Nadie te otorgó esa capacidad. Pedila y aprobala (pasos 7 y 8) |
 | `assurance_below_floor` | La capacidad pide más nivel del que la identidad tiene. Ver el paso 10 |
+| `no database: pass -dsn or set PG_DSN` | Abriste una terminal nueva y se perdieron los exports. `eval "$(./deploy.sh env)"` los vuelve a poner, con los valores del stack que está corriendo |
+| `uai-mcp-call.sh` no imprime nada | No debería pasar más: ahora falla fuerte. Si lo ves, el servidor MCP murió al arrancar y el script muestra su stderr |
 | `Command 'go' not found` | Go no está en el PATH. `export PATH="$PATH:$HOME/.local/go/bin"`. `make check-go` dice qué toolchain va a usar la build |
 
 ---

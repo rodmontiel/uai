@@ -292,8 +292,9 @@ it finishes it shows what it started and on which ports.
 ```bash
 ./deploy.sh up       # build what is missing, start everything, apply the schema
 ./deploy.sh down     # stop, keeping the data
-./deploy.sh nuke     # stop and delete the data
+./deploy.sh nuke     # stop and delete the data (--keys: the keys too)
 ./deploy.sh status   # what is running, and on which ports
+./deploy.sh env      # the exports the tools read: eval "$(./deploy.sh env)"
 ./deploy.sh logs uai-gateway   # follow one service's logs
 ```
 

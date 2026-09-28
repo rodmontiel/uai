@@ -71,7 +71,10 @@ refuses a grant from any party that does not answer for the agent.
 
 func open(dsn string) (*store.DB, context.Context, func(), error) {
 	if dsn == "" {
-		return nil, nil, nil, errors.New("-dsn is required")
+		// Naming the variable as well as the flag: the reader who hits this has
+		// almost always opened a new terminal and lost the export, and "-dsn is
+		// required" sends them to look for a flag they already know about.
+		return nil, nil, nil, errors.New("no database: pass -dsn or set PG_DSN")
 	}
 	ctx := context.Background()
 	db, err := store.Open(ctx, dsn)

@@ -27,6 +27,7 @@ var (
 	makeRE   = regexp.MustCompile(`(?m)^\s*(?:@|&& )?make ([a-z][a-z0-9-]*)`)
 	scriptRE = regexp.MustCompile(`\./(tools/[\w.-]+\.sh)`)
 	docLinkRE = regexp.MustCompile(`\]\((?:\./)?([A-Za-z0-9_.-]+\.md)\)`)
+	deployRE  = regexp.MustCompile(`\./deploy\.sh ([a-z][a-z0-9-]*)`)
 	// A flag as written in the document: `-name` or `-name value`.
 	flagRE = regexp.MustCompile(`(?:^|\s)-([a-z][a-z0-9-]*)`)
 )
@@ -191,4 +192,31 @@ func joinContinuations(src string) []string {
 		out = append(out, pending.String())
 	}
 	return out
+}
+
+// TestEveryDeploySubcommandTheExampleNamesExists. deploy.sh dispatches on a
+// case, so an unknown word reaches the default branch and prints usage -- which
+// the reader reads as their own typo. The document gained `./deploy.sh env`
+// before deploy.sh had it; this is what stops that being someone else's problem.
+func TestEveryDeploySubcommandTheExampleNamesExists(t *testing.T) {
+	script, err := os.ReadFile("../../deploy.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, m := range deployRE.FindAllStringSubmatch(exampleText(t), -1) {
+		sub := m[1]
+		if seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		// The dispatch table: `    name)   something ;;`
+		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(sub) + `\)`).Match(script) {
+			t.Errorf("the example runs `./deploy.sh %s`, and deploy.sh dispatches no such "+
+				"subcommand", sub)
+		}
+	}
+	if len(seen) == 0 {
+		t.Error("no ./deploy.sh subcommand found in the example; the check matched nothing")
+	}
 }

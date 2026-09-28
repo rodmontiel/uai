@@ -293,8 +293,9 @@ terminar te muestra qué levantó y en qué puertos.
 ```bash
 ./deploy.sh up       # construir lo que falte, levantar todo, aplicar el esquema
 ./deploy.sh down     # apagar, conservando los datos
-./deploy.sh nuke     # apagar y borrar los datos
+./deploy.sh nuke     # apagar y borrar los datos (--keys: también las llaves)
 ./deploy.sh status   # qué está corriendo y en qué puertos
+./deploy.sh env      # los exports que leen las herramientas: eval "$(./deploy.sh env)"
 ./deploy.sh logs uai-gateway   # seguir los registros de un servicio
 ```
 

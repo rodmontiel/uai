@@ -5,6 +5,7 @@
 #   ./deploy.sh down      stop everything, keep the data
 #   ./deploy.sh nuke      stop everything and delete the data (--keys: the keys too)
 #   ./deploy.sh status    what is running, and on which ports
+#   ./deploy.sh env       the exports for the stack that is running, for eval
 #   ./deploy.sh logs [s]  follow the logs of one service, or all of them
 #   ./deploy.sh build     rebuild the images without starting anything
 #
@@ -329,6 +330,30 @@ nuke() {
 # drift into two different answers to one question.
 gateway_env() { CONTAINER="$CONTAINER" ./tools/gateway-env.sh "$1"; }
 
+# env prints the environment the tools read, for `eval "$(./deploy.sh env)"`.
+#
+# The same three lines `up` prints at the end, except that `up` prints them once
+# and a terminal loses them the moment it closes. Everyone who came back the next
+# day hit "no database: pass -dsn or set PG_DSN" and had to go find them again.
+#
+# Values come from the gateway that is running, so they are right for the mode it
+# is in rather than for the mode it was in when someone wrote them down.
+env_exports() {
+    local scheme bundle
+    if ! scheme="$(gateway_env UAI_SCHEME)"; then
+        warn "no gateway is running; start one with ./deploy.sh up" >&2
+        return 1
+    fi
+    bundle="$(gateway_env UAI_SPIRE_BUNDLE)"
+    printf 'export PG_DSN=%s\n' "\"$PG_DSN\""
+    printf 'export UAI_ENDPOINT=%s\n' "\"${scheme:-http}://localhost:$GATEWAY_PORT\""
+    if [ -n "$bundle" ] && [ -s .spire/bootstrap.pem ]; then
+        printf 'export UAI_API_CA=%s\n' "\"$PWD/.spire/bootstrap.pem\""
+    else
+        printf 'unset UAI_API_CA\n'
+    fi
+}
+
 status() {
     say "  ${BOLD}containers${RESET}"
     if ! "$CONTAINER" ps --filter "label=io.podman.compose.project=uai" \
@@ -387,6 +412,7 @@ case "${1:-}" in
     up)     up ;;
     down)   down ;;
     nuke)   nuke "${2:-}" ;;
+    env)    env_exports ;;
     status) status ;;
     build)  build ;;
     logs)   shift; logs "$@" ;;
