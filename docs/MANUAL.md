@@ -352,6 +352,18 @@ go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.ex
 That key signs for every agent under it. It is the one file here whose loss cannot be undone by
 re-running anything.
 
+The command refuses to overwrite an existing `.keys/owner.jwk`, and after `./deploy.sh nuke` that
+refusal is the thing people trip on: the database is gone, the key on disk is not. The key is still
+yours — the registry simply no longer has a record of it. Register it again rather than deleting it:
+
+```bash
+go run ./tools/uai-register owner -reuse-key -name "ACME Robotics" -org-did did:web:acme.example
+```
+
+The owner gets a new identifier, because the old one existed only in the database that was deleted.
+`-reuse-key` still refuses if some owner in *this* database already uses that key: one key behind
+two owners means a signature no longer says which of them made the statement.
+
 **Step 2 — register the agent.** Its key is generated on your machine and never leaves it; only
 the public half is sent.
 
@@ -542,6 +554,9 @@ Phase 13.
 | The gateway warns `runtime attestation disabled` | Normal and fine. Without SPIRE configured it records self-declared runtimes; the warning exists so the difference is not invisible |
 | `package slices is not in GOROOT (/usr/src/slices)` | The `go` being used is **gccgo**, which Ubuntu's `golang-go` and `gccgo-go` packages install at `/usr/bin/go`. It is a different compiler and cannot build this. `make check-go` says which toolchain the build will use; install an official one from <https://go.dev/dl/> and put it ahead of `/usr/bin` on PATH |
 | `uai-register` refuses, saying it is running as root | You used `sudo`, and nothing here needs it: the database is reached over TCP and the keys go into your working tree. Run under sudo, the key is written as root and unreadable to you afterwards — which surfaces much later as a permission error on a file that looks fine |
+| `uai-register agent` fails with `403 UAI_OWNER_NOT_ELIGIBLE` | The owner named by `-owner-did` is not in this database — usually because it was deleted by `./deploy.sh nuke` while the keys stayed on disk. `uai-register show` lists the owners that exist; register yours again with `-reuse-key` |
+| `uai-register owner` says `.keys/owner.jwk already exists` | Correct, and it will not overwrite it: that key vouches for every agent under it. If the owner still exists the message names it — register an agent under that one. If nothing does, re-register the key with `-reuse-key` |
+| `./deploy.sh status` says a SPIRE agent is running but the gateway started before it | A gateway takes its mode once, when it starts. Starting the agent afterwards attests nothing until `./deploy.sh up` restarts the gateway — which keeps the data |
 | `make demo` says the port is in use | A previous run is still around. The target tries to clean it up; if not, `make demo DEMO_PORT=9999` |
 | Everything is strange after poking at things | `make nuke && make dev` — deletes the volumes and starts clean |
 

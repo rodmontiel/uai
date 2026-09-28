@@ -264,6 +264,40 @@ nuke() {
     # workload's fault.
     rm -rf .spire/data .spire/public .spire/svid .spire/bootstrap.pem .spire/agent.log
     say "    gone"
+    # The keys are deliberately NOT deleted: a private key is not something to
+    # remove on a subcommand's say-so, and the same file may still name an owner
+    # in another database. But they now outlive every record of them, and
+    # `uai-register owner` refuses to overwrite one -- which is where this stops
+    # being obvious and starts being a dead end.
+    local keys=0
+    for k in .keys/*.jwk; do [ -e "$k" ] && keys=$((keys + 1)); done
+    if [ "$keys" -gt 0 ]; then
+        say
+        say "    ${BOLD}$keys key file(s) under .keys/ survived this.${RESET} They now name identities"
+        say "    no database has. The keys are still yours -- register the owner again"
+        say "    with the one you already hold:"
+        say
+        say "      uai-register owner -reuse-key -name 'ACME Robotics' -org-did did:web:acme.example"
+        say
+        say "    ${DIM}Deleting .keys/ instead is your call to make, not this script's.${RESET}"
+    fi
+}
+
+# gateway_env prints one environment variable of the gateway container that is
+# running now, and fails when none is.
+#
+# The gateway's mode is fixed when the process starts, so this is the only place
+# the answer lives. Reading it off the filesystem instead -- a TLS certificate in
+# .spire/gateway, a live SPIRE agent -- reports the state of the NEXT `up`, not
+# of the gateway now serving requests: start the agent after the stack and those
+# files say "attested" while every request is still plain HTTP.
+gateway_env() {
+    local name
+    name="$("$CONTAINER" ps --format '{{.Names}}' 2>/dev/null \
+        | grep -E 'uai[-_]gateway' | head -1)"
+    [ -n "$name" ] || return 1
+    "$CONTAINER" inspect "$name" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+        | sed -n "s/^$1=//p" | head -1
 }
 
 status() {
@@ -276,19 +310,38 @@ status() {
         "$CONTAINER" ps --filter "label=io.podman.compose.project=uai" \
             --format '    {{.Names}}  {{.Status}}'
     fi
+    local tls bundle running=yes
+    tls="$(gateway_env UAI_TLS_CERT)" || running=no
+    bundle="$(gateway_env UAI_SPIRE_BUNDLE)" || true
+
     say
     say "  ${BOLD}ports${RESET}"
     printf '    %-28s %s\n' "http://localhost:$WEB_PORT" "the five surfaces"
     local api=http
-    [ -f .spire/gateway/tls.pem ] && api=https
-    printf '    %-28s %s\n' "$api://localhost:$GATEWAY_PORT" "the API"
+    [ -n "$tls" ] && api=https
+    if [ "$running" = yes ]; then
+        printf '    %-28s %s\n' "$api://localhost:$GATEWAY_PORT" "the API"
+    else
+        printf '    %-28s %s\n' "$api://localhost:$GATEWAY_PORT" "the API ${DIM}(not running)${RESET}"
+    fi
     printf '    %-28s %s\n' "localhost:$PG_PORT" "PostgreSQL"
     say
     say "  ${BOLD}runtime attestation${RESET}"
-    if [ -f .spire/agent.pid ] && kill -0 "$(cat .spire/agent.pid)" 2>/dev/null; then
-        printf '    %son%s   the SPIRE agent is attesting host workloads\n' "$GREEN" "$RESET"
+    local agent=down
+    [ -f .spire/agent.pid ] && kill -0 "$(cat .spire/agent.pid)" 2>/dev/null && agent=up
+    if [ "$running" = no ]; then
+        printf '    %s?%s    no gateway is running, so nothing is being attested\n' "$DIM" "$RESET"
+    elif [ -n "$bundle" ]; then
+        printf '    %son%s   the gateway binds runtimes to SPIFFE identities\n' "$GREEN" "$RESET"
+        [ "$agent" = up ] || printf '    %s     but no SPIRE agent is running, so no workload can get an SVID  %s(make spire-up)%s\n' \
+            "$RED" "$DIM" "$RESET"
+    elif [ "$agent" = up ]; then
+        # The state that reads as "on" from the filesystem and is off in fact.
+        printf '    %soff%s  a SPIRE agent is running, but this gateway started before it\n' \
+            "$RED" "$RESET"
+        printf '         and takes its mode at startup  %s(./deploy.sh up)%s\n' "$DIM" "$RESET"
     else
-        printf '    %soff%s  bindings record self-declared runtimes  %s(make spire-up)%s\n' \
+        printf '    %soff%s  bindings record self-declared runtimes  %s(make spire-up && ./deploy.sh up)%s\n' \
             "$DIM" "$RESET" "$DIM" "$RESET"
     fi
 }

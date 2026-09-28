@@ -353,6 +353,18 @@ go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.ex
 Esa llave firma por todos los agentes que cuelguen de ella. Es el único archivo acá cuya pérdida
 no se arregla volviendo a correr nada.
 
+El comando se niega a pisar un `.keys/owner.jwk` que ya existe, y después de `./deploy.sh nuke` esa
+negativa es con lo que uno choca: la base ya no está, la llave en disco sí. La llave sigue siendo
+tuya — lo que se perdió es el registro. Volvé a registrarla en lugar de borrarla:
+
+```bash
+go run ./tools/uai-register owner -reuse-key -name "ACME Robotics" -org-did did:web:acme.example
+```
+
+El dueño recibe un identificador nuevo, porque el anterior existía únicamente en la base que se
+borró. `-reuse-key` igual se niega si algún dueño de *esta* base ya usa esa llave: una llave detrás
+de dos dueños es una firma que ya no dice cuál de los dos hizo la afirmación.
+
 **Paso 2 — registrar el agente.** Su llave se genera en tu máquina y nunca sale de ahí; solo viaja
 la mitad pública.
 
@@ -546,6 +558,9 @@ Fase 13.
 | El gateway avisa `runtime attestation disabled` | Es normal y está bien. Sin SPIRE configurado registra runtimes auto-declarados; la advertencia existe para que la diferencia no sea invisible |
 | `package slices is not in GOROOT (/usr/src/slices)` | El `go` que se está usando es **gccgo**, que instalan los paquetes `golang-go` y `gccgo-go` de Ubuntu en `/usr/bin/go`. Es otro compilador y no puede construir esto. `make check-go` dice qué toolchain va a usar la build; instalá uno oficial de <https://go.dev/dl/> y ponelo antes de `/usr/bin` en el PATH |
 | `uai-register` se niega diciendo que corre como root | Usaste `sudo`, y acá no hace falta para nada: la base se alcanza por TCP y las llaves van a tu directorio de trabajo. Bajo sudo la llave se escribe como root y después no la podés leer — y eso aparece mucho más tarde, como un error de permisos sobre un archivo que en `ls` se ve bien |
+| `uai-register agent` falla con `403 UAI_OWNER_NOT_ELIGIBLE` | El dueño que nombra `-owner-did` no está en esta base — casi siempre porque lo borró `./deploy.sh nuke` mientras las llaves quedaron en disco. `uai-register show` lista los dueños que existen; volvé a registrar el tuyo con `-reuse-key` |
+| `uai-register owner` dice `.keys/owner.jwk already exists` | Está bien, y no lo va a pisar: esa llave responde por todos los agentes que cuelgan de ella. Si el dueño todavía existe, el mensaje te dice cuál es — registrá un agente bajo ese. Si no existe ninguno, volvé a registrar la llave con `-reuse-key` |
+| `./deploy.sh status` dice que hay un agente SPIRE corriendo pero el gateway arrancó antes | El gateway fija su modo una sola vez, al arrancar. Levantar el agente después no atestigua nada hasta que `./deploy.sh up` lo reinicie — y eso conserva los datos |
 | `make demo` dice que el puerto está ocupado | Quedó una corrida anterior. El propio target intenta limpiarla; si no, `make demo DEMO_PORT=9999` |
 | Todo raro después de tocar cosas | `make nuke && make dev` — borra los volúmenes y arranca limpio |
 

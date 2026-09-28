@@ -245,3 +245,11 @@ autores angostó el protocolo sin decirlo.
 33. **El `expires_at` sale del certificado, no de una constante.** El binding guardaba
     `now + SVIDTTL` con SVIDTTL de una hora; un SVID que expira en cinco minutos habría quedado
     registrado como runtime vigente mucho después de que el atestador dejó de responder por él.
+34. **Un archivo en disco no es una configuración corriendo.** Un proceso fija su modo al
+    arrancar. `deploy.sh status` leía `.spire/gateway/tls.pem` y el pid del agente SPIRE, y
+    reportaba "atestación: on" mientras el gateway que estaba sirviendo había arrancado antes que
+    el agente y no tenía ninguna. El estado de un servicio se le pregunta al servicio.
+35. **Negarse a pisar algo es media compuerta; la otra mitad es el camino hacia adelante.**
+    `nuke` borra la base y deja las llaves, y entonces `uai-register owner` se niega
+    correctamente y sin salida. Una negativa sin siguiente paso enseña a borrar claves privadas
+    para destrabarse, que es exactamente lo que la negativa existía para evitar.

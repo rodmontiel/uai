@@ -110,6 +110,8 @@ func usage() {
   uai-register owner -name "ACME Robotics" -org-did did:web:acme.example [-dsn ...]
       Creates the organization, the owner and the owner's signing key.
       Needs the database: an owner is a registrar's act, not an API call.
+      -reuse-key registers with the key already on disk instead of a new one,
+      for a key that outlived the database that recorded it.
 
   uai-register agent -owner-did did:uai:owner:… -name "DeliveryOptimizer" [-endpoint ...]
       Registers an agent: generates its key, answers both halves of the §8.2
@@ -138,6 +140,8 @@ func createOwner(args []string) error {
 	orgName := fs.String("org-name", "", "legal name of the organization (defaults to -name)")
 	jurisdiction := fs.String("jurisdiction", "AR", "ISO 3166-1 alpha-2 country the owner answers in")
 	keyPath := fs.String("key", ".keys/owner.jwk", "where to write the owner's signing key")
+	reuse := fs.Bool("reuse-key", false,
+		"register with the key already at -key instead of generating a new one")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -170,32 +174,71 @@ func createOwner(args []string) error {
 		return err
 	}
 	ownerDID := "did:uai:owner:" + id.String()
-	if _, statErr := os.Stat(*keyPath); statErr == nil {
+	_, statErr := os.Stat(*keyPath)
+	switch {
+	case statErr == nil && !*reuse:
 		// Refusing is right; refusing without saying what to do instead is not.
 		// The usual reason this file exists is that the owner was already
 		// created, and the next step is to use it -- so look up which one it is
 		// and hand back the command.
 		msg := fmt.Sprintf("%s already exists. An owner key is what vouches for every agent "+
 			"under it; overwriting one orphans them all.", *keyPath)
-		if did, lookupErr := ownerOfKey(ctx, db, *keyPath); lookupErr == nil && did != "" {
+		did, lookupErr := ownerOfKey(ctx, db, *keyPath)
+		if lookupErr == nil && did != "" {
 			return fmt.Errorf("%s\n\n  That key belongs to %s, which already exists.\n"+
 				"  You do not need a new owner. Register an agent under it:\n\n"+
 				"    uai-register agent -owner-did %s -name \"MyAgent\"\n\n"+
 				"  `uai-register show` lists what this database already holds.",
 				msg, did, did)
 		}
+		// A key with no owner behind it. The ordinary way to get here is a
+		// database that was deleted while the keys stayed on disk, and the key
+		// is still yours -- so the answer is to register it again, not to
+		// delete a private key because a tool told you to.
 		return fmt.Errorf("%s\n\n  No owner in this database uses it, so it is a key without a "+
 			"record -- from another database, or from one that was deleted.\n"+
-			"  Move it aside, or pass -key somewhere else.", msg)
-	}
-	if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dirOf(*keyPath), 0o700); err != nil {
-		return err
-	}
-	if err := keyfile.Generate(*keyPath, ownerDID+"#key-1"); err != nil {
-		return fmt.Errorf("writing %s: %w", *keyPath, err)
+			"  Register an owner with the key you already hold:\n\n"+
+			"    uai-register owner -reuse-key -name %q -org-did %s\n\n"+
+			"  Or pass -key somewhere else to make a second, unrelated owner.",
+			msg, *name, *orgDID)
+	case statErr != nil && *reuse:
+		return fmt.Errorf("-reuse-key was given, but %s does not exist. "+
+			"Drop the flag to generate a key there", *keyPath)
+	case statErr != nil:
+		if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dirOf(*keyPath), 0o700); err != nil {
+			return err
+		}
+		if err := keyfile.Generate(*keyPath, ownerDID+"#key-1"); err != nil {
+			return fmt.Errorf("writing %s: %w", *keyPath, err)
+		}
+	default:
+		// Reusing. Two things have to hold before this key gets a second
+		// identity: that it is a usable key at all, and that no owner in THIS
+		// database already speaks with it. Skipping the second would put one
+		// key behind two owners, which is the confusion the refusal above
+		// exists to prevent -- and -reuse-key must not become a way around it.
+		if _, err := keyfile.Load(*keyPath, ownerDID+"#key-1"); err != nil {
+			return fmt.Errorf("-reuse-key: %w", err)
+		}
+		did, lookupErr := ownerOfKey(ctx, db, *keyPath)
+		if lookupErr != nil {
+			return fmt.Errorf("-reuse-key: checking whether %s is already registered: %w",
+				*keyPath, lookupErr)
+		}
+		if did != "" {
+			return fmt.Errorf("-reuse-key: %s already belongs to %s in this database.\n"+
+				"  Registering it again would put one key behind two owners, and a signature\n"+
+				"  from it would no longer say which one made the statement.\n\n"+
+				"  Register an agent under the owner that exists:\n\n"+
+				"    uai-register agent -owner-did %s -name \"MyAgent\"",
+				*keyPath, did, did)
+		}
+		if err := keyfile.SetKID(*keyPath, ownerDID+"#key-1"); err != nil {
+			return fmt.Errorf("-reuse-key: relabelling %s: %w", *keyPath, err)
+		}
 	}
 	jwk, err := keyfile.PublicJWK(*keyPath)
 	if err != nil {
@@ -245,7 +288,11 @@ func createOwner(args []string) error {
 
 	fmt.Printf("  organization  %s\n", *orgDID)
 	fmt.Printf("  owner         %s\n", ownerDID)
-	fmt.Printf("  key           %s\n", *keyPath)
+	if *reuse {
+		fmt.Printf("  key           %s  (reused; relabelled for this owner)\n", *keyPath)
+	} else {
+		fmt.Printf("  key           %s\n", *keyPath)
+	}
 	fmt.Println()
 	fmt.Println("  Register an agent under it:")
 	fmt.Printf("    uai-register agent -owner-did %s -name \"MyAgent\"\n", ownerDID)

@@ -128,3 +128,48 @@ func PublicJWK(path string) (uaicrypto.JWK, error) {
 	jwk.Kid = doc.Kid
 	return jwk, nil
 }
+
+// SetKID relabels a key file without touching its key material.
+//
+// The kid names the DID the key speaks for, and a key outlives the record of
+// it: re-registering an owner whose database was deleted keeps the file and
+// gets a new DID. Leaving the old kid there would publish a key whose own label
+// points at a DID that no longer resolves -- a discrepancy nobody would notice
+// until someone tried to follow it.
+func SetKID(path, kid string) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("keyfile: %w", err)
+	}
+	var doc privateJWK
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return fmt.Errorf("keyfile: %s: %w", path, err)
+	}
+	if doc.Kid == kid {
+		return nil
+	}
+	doc.Kid = kid
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	// Written beside the original and renamed over it. A key file truncated by
+	// an interrupted write is key material destroyed, and there is no second
+	// copy to restore it from.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".jwk-*")
+	if err != nil {
+		return fmt.Errorf("keyfile: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(append(out, '\n')); err != nil {
+		tmp.Close()
+		return fmt.Errorf("keyfile: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("keyfile: %w", err)
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return fmt.Errorf("keyfile: %w", err)
+	}
+	return os.Rename(tmp.Name(), path)
+}
