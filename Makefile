@@ -269,6 +269,38 @@ demo-up:
 	@curl -sf http://127.0.0.1:$(DEMO_PORT)/v1/quarantines >/dev/null 2>&1 || { \
 		echo "the gateway did not come up:"; tail -5 $(DEMO_KEYS)/gateway.log; exit 1; }
 
+# The same scenario, one criterion at a time, against THE STACK YOU ARE RUNNING
+# rather than a throwaway one.
+#
+# That difference is the whole point: `make demo` builds its own postgres and
+# gateway and destroys both, so nothing it does is ever visible at :8081. This
+# target writes to the registry the browser surfaces are actually reading, which
+# is what makes "go look at the page" a real instruction.
+#
+# The price is that what it creates stays: UAI does not delete identities
+# (INV-006), so a walkthrough leaves an organization, an owner and a revoked
+# agent behind. That is the property working, not a leak.
+.PHONY: walkthrough
+walkthrough: ## Step through the 21 criteria against the running stack, pausing at each
+	@command -v python3 >/dev/null 2>&1 || { echo "python3 not found"; exit 1; }
+	@python3 -c 'import cryptography' 2>/dev/null || { \
+		echo "the Python SDK needs: pip install cryptography"; exit 1; }
+	@mkdir -p $(DEMO_KEYS) && chmod 700 $(DEMO_KEYS)
+	@$(GO) build -o $(DEMO_KEYS)/uai-verify ./tools/uai-verify
+	@# Resolved from the gateway that is running, not from a default: against an
+	@# attested stack the address is https and needs a CA, and getting that wrong
+	@# fails with a TLS error that names neither.
+	@scheme=$$(./tools/gateway-env.sh UAI_SCHEME 2>/dev/null || echo http); \
+	bundle=$$(./tools/gateway-env.sh UAI_SPIRE_BUNDLE 2>/dev/null || true); \
+	endpoint="$${UAI_ENDPOINT:-$$scheme://localhost:8080}"; \
+	ca="$${UAI_API_CA:-}"; \
+	if [ -n "$$bundle" ] && [ -z "$$ca" ]; then ca=.spire/bootstrap.pem; fi; \
+	echo "  gateway  $$endpoint$${ca:+  (CA: $$ca)}"; \
+	PG_DSN="$(PG_DSN)" python3 demo/demo.py --step \
+		--endpoint "$$endpoint" --dsn "$(PG_DSN)" --keys $(DEMO_KEYS) \
+		--ca "$$ca" --web "$${UAI_WEB:-http://localhost:8081}" \
+		--verify-bin "$(PWD)/$(DEMO_KEYS)/uai-verify"
+
 .PHONY: demo-down
 demo-down:
 	@test -f $(DEMO_KEYS)/gateway.pid && kill $$(cat $(DEMO_KEYS)/gateway.pid) 2>/dev/null || true

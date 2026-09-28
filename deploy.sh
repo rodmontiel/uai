@@ -300,19 +300,10 @@ nuke() {
 # gateway_env prints one environment variable of the gateway container that is
 # running now, and fails when none is.
 #
-# The gateway's mode is fixed when the process starts, so this is the only place
-# the answer lives. Reading it off the filesystem instead -- a TLS certificate in
-# .spire/gateway, a live SPIRE agent -- reports the state of the NEXT `up`, not
-# of the gateway now serving requests: start the agent after the stack and those
-# files say "attested" while every request is still plain HTTP.
-gateway_env() {
-    local name
-    name="$("$CONTAINER" ps --format '{{.Names}}' 2>/dev/null \
-        | grep -E 'uai[-_]gateway' | head -1)"
-    [ -n "$name" ] || return 1
-    "$CONTAINER" inspect "$name" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
-        | sed -n "s/^$1=//p" | head -1
-}
+# The reading lives in tools/gateway-env.sh because the Makefile needs the same
+# answer, and two implementations of "what is the gateway running with" would
+# drift into two different answers to one question.
+gateway_env() { CONTAINER="$CONTAINER" ./tools/gateway-env.sh "$1"; }
 
 status() {
     say "  ${BOLD}containers${RESET}"

@@ -274,8 +274,8 @@ class Agent:
     """
 
     def __init__(self, endpoint: str, uai_id: str, signer: Signer,
-                 owner_did: str = "", timeout: float = 30.0) -> None:
-        self.transport = Transport(endpoint, uai_id, signer, timeout=timeout)
+                 owner_did: str = "", timeout: float = 30.0, ca: str = "") -> None:
+        self.transport = Transport(endpoint, uai_id, signer, timeout=timeout, ca=ca)
         self.uai_id = uai_id
         self.signer = signer
         self.did = signer.did
@@ -285,6 +285,10 @@ class Agent:
     @classmethod
     def from_env(cls) -> "Agent":
         """Build an agent from ``UAI_ENDPOINT``, ``UAI_AGENT_ID``, ``UAI_AGENT_KEY``.
+
+        ``UAI_API_CA`` names the CA to verify a TLS gateway with, and is read
+        here so that moving from a plain stack to an attested one is a change of
+        environment rather than a change of code.
 
         Nothing is generated when a variable is missing.  A key created at
         startup would sign credentials that stop verifying at the next restart,
@@ -300,7 +304,8 @@ class Agent:
                 "registered identity and will not invent one."
             )
         signer = Signer.from_file(key_path, f"did:{uai_id}#key-1")
-        return cls(endpoint, uai_id, signer, owner_did=os.environ.get("UAI_OWNER_DID", ""))
+        return cls(endpoint, uai_id, signer, owner_did=os.environ.get("UAI_OWNER_DID", ""),
+                   ca=os.environ.get("UAI_API_CA", ""))
 
     # ── the context-manager API ─────────────────────────────────────────────
 

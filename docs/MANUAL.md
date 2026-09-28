@@ -481,11 +481,24 @@ Each one fails if something is wrong. None of them is decorative.
 
 ```bash
 make demo        # the full scenario: 21/21 criteria
+make walkthrough # the same scenario, one criterion at a time, on your own stack
 make attested    # that SPIRE certifies the runtime, not the agent itself: 7/7
 make pentest     # 16 attacks from outside; fails if any of them works
 make invariants  # 88 forbidden operations; fails if any is allowed
 make check       # everything that has to pass before a commit
 ```
+
+**`make walkthrough`** is `make demo` slowed down to reading speed. It stops at each of the 21
+criteria, prints the call it just made as a command you could have typed yourself — a real `curl`,
+a real `psql`, or the SDK when the call is signed — shows what came back, and tells you which page
+to open before you press Enter. That is the difference that matters: `make demo` builds a
+throwaway database and gateway and destroys both, so nothing it does is ever visible in the
+browser. The walkthrough writes to the stack you are running, which is the one the pages read.
+
+The price is that what it creates stays. UAI does not delete identities, so a walkthrough leaves
+an organization, an owner and a revoked agent behind — and that is the guarantee working, not a
+leak. Signed calls print as what the SDK sent rather than as a `curl` to paste: the signature
+covers the method, the URL and the body, so a copy of it would not verify.
 
 **`make pentest`** is the most illuminating for someone who wants to understand what the system
 protects. It attacks a real API from outside, holding the only thing an attacker would have: a

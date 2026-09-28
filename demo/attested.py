@@ -32,6 +32,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey 
 from uai.crypto import Domain, Signer, b64url, jwk_thumbprint  # noqa: E402
 from uai.pop import nonce, sign_request  # noqa: E402
 
+# Shared with demo/demo.py: see demo/spire.py for why picking svid.0.pem is the
+# mistake this replaces.
+from spire import spiffe_id_of as read_spiffe_id  # noqa: E402
+from spire import svid_count as count_svids  # noqa: E402
+from spire import fetch_svid  # noqa: E402
+
 BOLD, DIM, RED, GREEN, RESET = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[0m"
 
 checks: list[tuple[str, bool, str]] = []
@@ -165,22 +171,13 @@ def main() -> int:
                   "-parentID", parent_of(args), "-spiffeID",
                   f"spiffe://{args.trust_domain}/agents/{ulid}/i/dev",
                   "-selector", f"unix:uid:{os.getuid()}", "-x509SVIDTTL", "3600"], quiet=True)
-    import time
     svid_dir = os.path.join(args.spire_dir, "svid")
-    os.makedirs(svid_dir, exist_ok=True)
-    svid_pem = ""
-    for _ in range(20):
-        run([agent_bin, "api", "fetch", "x509", "-socketPath", socket, "-write", svid_dir],
-            quiet=True)
-        # A workload holds every SVID whose registration entry matches it, and
-        # a selector like unix:uid matches more than one. Picking svid.0 got the
-        # SVID of whichever entry SPIRE happened to return first -- a bug that
-        # would have shipped as "attestation works" while binding the wrong
-        # identity. An agent has to choose the SVID that names IT.
-        svid_pem = svid_naming(svid_dir, ulid)
-        if svid_pem:
-            break
-        time.sleep(1)
+    # A workload holds every SVID whose registration entry matches it, and a
+    # selector like unix:uid matches more than one. Picking svid.0 got the SVID
+    # of whichever entry SPIRE happened to return first -- a bug that would have
+    # shipped as "attestation works" while binding the wrong identity. An agent
+    # has to choose the SVID that names IT, and wait for it to exist.
+    svid_pem = fetch_svid(agent_bin, socket, svid_dir, ulid)
     check("the Workload API issued an SVID for this agent", bool(svid_pem),
           read_spiffe_id(svid_pem) if svid_pem else f"none of the {count_svids(svid_dir)} "
           f"SVIDs this workload holds names {ulid}")
@@ -235,31 +232,6 @@ def parent_of(args) -> str:
     return m.group(0)
 
 
-def svid_naming(svid_dir: str, ulid: str) -> str:
-    """The path of the SVID whose SPIFFE ID names this agent, or ""."""
-    import glob
-    for path in sorted(glob.glob(os.path.join(svid_dir, "svid.*.pem"))):
-        if f"/agents/{ulid}/" in read_spiffe_id(path):
-            return path
-    return ""
-
-
-def count_svids(svid_dir: str) -> int:
-    import glob
-    return len(glob.glob(os.path.join(svid_dir, "svid.*.pem")))
-
-
-def read_spiffe_id(pem_path: str) -> str:
-    from cryptography import x509
-    try:
-        with open(pem_path, "rb") as fh:
-            cert = x509.load_pem_x509_certificate(fh.read())
-    except OSError:
-        return ""
-    for san in cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value:
-        if isinstance(san, x509.UniformResourceIdentifier):
-            return san.value
-    return ""
 
 
 def bind(endpoint: str, uai_id: str, signer: Signer, ctx: ssl.SSLContext,

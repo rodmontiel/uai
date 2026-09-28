@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import secrets
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -36,6 +37,10 @@ from uai.canonical import canonicalize  # noqa: E402
 from uai.client import Transport  # noqa: E402
 from uai.crypto import Domain, Signer, b64url, digest, format_digest, jwk_thumbprint  # noqa: E402
 from uai.pop import nonce  # noqa: E402
+
+# Shared with demo/attested.py: see demo/spire.py for why picking svid.0.pem is
+# the mistake this replaces.
+from spire import fetch_svid, spiffe_id_of, svid_count  # noqa: E402
 
 # ── the 21 criteria of §24.1 ────────────────────────────────────────────────
 CRITERIA = {
@@ -68,6 +73,165 @@ if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
 
 demonstrated: set[int] = set()
 
+# ── step-by-step mode ─────────────────────────────────────────────────
+#
+# One scenario, two ways to read it: `make demo` runs it as a gate, `make
+# walkthrough` stops at every criterion and shows the call it just made as a
+# command you could have typed yourself.
+#
+# Deliberately the SAME script rather than a second, explanatory one. A parallel
+# narration drifts exactly the way a document describing controls drifts: the
+# gate keeps passing while the explanation quietly describes an older system.
+# What is printed here is derived from the call that actually happened, so it
+# cannot describe a request the demo did not make.
+STEPS = False
+CA = ""
+WEB = "http://localhost:8081"
+
+#: Filled in as the run learns them, so the pointers below can name the real ids.
+CONTEXT: dict[str, str] = {}
+
+#: Where the change each criterion made becomes visible. The point of the
+#: step mode is to look, so a criterion with nowhere to look says so.
+LOOK: dict[int, tuple[str, str]] = {
+    1: ("", "Nothing yet: an organization has no page of its own. It appears as the "
+            "agent's owner once there is an agent."),
+    2: ("", "Still nothing. The owner key never leaves your disk, and a key with no "
+            "agent under it has nothing to show."),
+    3: ("{web}/agent.html?id={uai_id}", "The identity exists, with status REGISTERED."),
+    4: ("{web}/verify.html", "Paste {uai_id}. It resolves — that is all an identifier owes you."),
+    5: ("{endpoint}/v1/agents/{uai_id}/did.json", "The DID document, with the key and its validity window."),
+    6: ("{web}/agent.html?id={uai_id}", "Two credentials: what it is, and who answers for it."),
+    7: ("{web}/agent.html?id={uai_id}", "Status is now ACTIVE, and a runtime identity is bound."),
+    8: ("{web}/explorer.html", "The action appears. Note it carries a commitment, not the inputs."),
+    9: ("{web}/explorer.html", "Open the event: its signature and its place in the hash chain."),
+    10: ("{web}/explorer.html", "The event names the policy decision that let it happen."),
+    11: ("{web}/explorer.html", "The receipt: an inclusion proof against a witnessed checkpoint."),
+    12: ("{web}/explorer.html", "VERIFIED_UNANCHORED — and it will stay that way here. "
+                                "No chain is running in this stack."),
+    13: ("{web}/explorer.html", "The refused action is recorded too. A log of successes is an advertisement."),
+    14: ("{web}/quarantine.html", "The quarantine order, and exactly which capabilities it suspended."),
+    15: ("{web}/governance.html", "The case, opened on committed evidence rather than on content."),
+    16: ("{web}/governance.html", "The proposal, and the votes as they arrive."),
+    17: ("{web}/governance.html", "The tally, recomputed from the signed assertions."),
+    18: ("{web}/governance.html", "The decision, with the proof over everything it fixes."),
+    19: ("{web}/verify.html", "Paste {uai_id} again. It now reads REVOKED — and it still resolves."),
+    20: ("{web}/agent.html?id={uai_id}", "The identity is still there, with its whole history. "
+                                         "Revocation removes nothing."),
+    21: ("{web}/verify.html", "This page checks the proofs in your browser. It is the one screen "
+                              "here that does not ask you to trust us."),
+}
+
+
+def _quote(text: str) -> str:
+    """Render a shell single-quoted string, so the line can be pasted as it is."""
+    return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def show_command(lines: list[str], caveat: str = "") -> None:
+    """Print the call about to be made, as something a person could run."""
+    if not STEPS:
+        return
+    print(f"\n    {BOLD}what runs{RESET}")
+    for line in lines:
+        print(f"      {line}")
+    if caveat:
+        for line in caveat.strip().splitlines():
+            print(f"      {YELLOW}{line.strip()}{RESET}")
+
+
+def show_result(payload: object, limit: int = 20) -> None:
+    """Print what came back, truncated rather than summarised.
+
+    Truncated: a summary of a response is a second description that can be
+    wrong. The line count says what was left out.
+    """
+    if not STEPS:
+        return
+    if isinstance(payload, str):
+        text = payload
+    else:
+        text = json.dumps(payload, indent=2, sort_keys=True)
+    lines = text.splitlines() or ["(empty)"]
+    print(f"    {BOLD}result{RESET}")
+    for line in lines[:limit]:
+        print(f"      {DIM}{line}{RESET}")
+    if len(lines) > limit:
+        print(f"      {DIM}… {len(lines) - limit} more line(s){RESET}")
+
+
+def pause(n: int) -> None:
+    """Say where to look, then wait.
+
+    Called after a criterion is demonstrated rather than before the next one:
+    the thing worth looking at is what just changed.
+    """
+    if not STEPS:
+        return
+    where, what = LOOK.get(n, ("", ""))
+    fields = {"web": WEB, "endpoint": CONTEXT.get("endpoint", ""), **CONTEXT}
+    if where:
+        print(f"\n    {BOLD}look at{RESET}  {where.format(**fields)}")
+        print(f"             {DIM}{what.format(**fields)}{RESET}")
+    elif what:
+        print(f"\n    {DIM}{what.format(**fields)}{RESET}")
+    try:
+        answer = input(f"\n    {DIM}[Enter] next · [a] run the rest · [q] stop{RESET}  ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("\nstopped")
+    if answer == "q":
+        raise SystemExit(f"{YELLOW}stopped at criterion {n}. "
+                         f"Everything up to here is in the registry, and stays there.{RESET}")
+    if answer == "a":
+        globals()["STEPS"] = False
+        print(f"    {DIM}running the rest without stopping{RESET}")
+
+
+class Traced:
+    """Shows the SDK's signed calls in step mode.
+
+    A wrapper rather than a hook in the SDK, and it prints what the SDK DID
+    rather than a command to copy: a signed request cannot be reproduced with
+    curl, because the signature covers the method, the URL and the body. Saying
+    that plainly is the point — an agent's calls carry proof of possession, and
+    that is not something the reader should have to infer from a curl that would
+    fail.
+    """
+
+    def __init__(self, inner: object) -> None:
+        self.inner = inner
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.inner, name)
+
+    def _trace(self, method: str, path: str, body: object, signed: bool) -> None:
+        lines = [f"{method} {path}    {DIM}(via the SDK){RESET}"]
+        if body not in (None, {}):
+            for line in json.dumps(body, indent=2, sort_keys=True).splitlines()[:12]:
+                lines.append(f"  {line}")
+        show_command(lines, caveat=(
+            "Signed with proof of possession. The signature covers the method, the URL\n"
+            "and the body, so this is not a curl you can paste — it is what the SDK sent."
+        ) if signed else "")
+
+    def get(self, path: str) -> object:
+        self._trace("GET", path, None, signed=False)
+        out = self.inner.get(path)
+        show_result(out)
+        return out
+
+    def post(self, path: str, domain: str, body: object) -> object:
+        self._trace("POST", path, body, signed=True)
+        out = self.inner.post(path, domain, body)
+        show_result(out)
+        return out
+
+    def post_public(self, path: str, body: object) -> object:
+        self._trace("POST", path, body, signed=False)
+        out = self.inner.post_public(path, body)
+        show_result(out)
+        return out
+
 
 def step(n: int, what: str) -> None:
     print(f"\n{BOLD}── {n:>2}. {CRITERIA[n]}{RESET}  {DIM}{what}{RESET}")
@@ -76,6 +240,7 @@ def step(n: int, what: str) -> None:
 def shown(n: int, detail: str = "") -> None:
     demonstrated.add(n)
     print(f"    {GREEN}✓{RESET} {detail}" if detail else f"    {GREEN}✓{RESET}")
+    pause(n)
 
 
 def note(text: str) -> None:
@@ -133,9 +298,24 @@ def http_json(url: str, body: dict | None = None, method: str = "GET") -> dict:
     if data is not None:
         request.add_header("Content-Type", "application/json")
         request.add_header("Idempotency-Key", "demo-" + nonce())
+    if STEPS:
+        line = "curl -s" + (f" --cacert {CA}" if CA else "")
+        if method != "GET":
+            line += f" -X {method}"
+        lines = [f"{line} {url}"]
+        if data is not None:
+            lines[0] += " \\"
+            lines.append("  -H 'Content-Type: application/json' \\")
+            lines.append(f"  -d {_quote(json.dumps(body))}")
+        show_command(lines)
+    # context=None is urllib's default verification; a CA is only supplied when
+    # the gateway serves TLS, and there is no switch here to skip checking it.
+    context = ssl.create_default_context(cafile=CA) if CA else None
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read() or b"{}")
+        with urllib.request.urlopen(request, timeout=30, context=context) as response:
+            out = json.loads(response.read() or b"{}")
+            show_result(out)
+            return out
     except urllib.error.HTTPError as exc:
         body = exc.read()
         try:
@@ -160,11 +340,70 @@ def psql(dsn: str, sql: str) -> str:
     capability approval. Both are acts of parties the agent is not, and neither
     has an API route an agent could reach — which is the point.
     """
+    if STEPS:
+        lines = ['psql "$PG_DSN" <<\'SQL\'']
+        lines += ["  " + line.strip() for line in sql.strip().splitlines() if line.strip()]
+        lines.append("SQL")
+        show_command(lines, caveat=(
+            "The database, not the API. Appointing a delegate and approving a capability\n"
+            "are acts of parties the agent is not, and no route exposes them to one."
+        ))
     out = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", sql],
                          capture_output=True, text=True)
     if out.returncode != 0:
         raise SystemExit(f"psql failed: {out.stderr.strip()}")
+    show_result(out.stdout.strip() or "(no rows)")
     return out.stdout.strip()
+
+
+def der_of(pem_path: str) -> bytes:
+    """A leaf certificate's DER bytes, which is what its hash is taken over."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives.serialization import Encoding
+
+    with open(pem_path, "rb") as handle:
+        return x509.load_pem_x509_certificate(handle.read()).public_bytes(Encoding.DER)
+
+
+def attested_svid(uai_id: str, args) -> tuple[str, str]:
+    """This agent's X509-SVID, when the registry is one that verifies runtimes.
+
+    Returns ("", "") where no SPIRE agent is reachable, which is the stack that
+    records a runtime the agent describes about itself.
+
+    The order is not a detail: a SPIRE registration entry NAMES the agent, so it
+    cannot exist before the agent has an identifier. That is exactly why binding
+    is a separate step from registration rather than a flag on it.
+    """
+    agent_bin = os.path.join(args.spire_dir, "bin", "spire-agent")
+    socket = os.path.join(args.spire_dir, "public", "api.sock")
+    if not args.ca or not (os.path.exists(agent_bin) and os.path.exists(socket)):
+        return "", ""
+
+    ulid = uai_id.split(":")[-1]
+    show_command([f"make spire-entry ULID={ulid}", "make spire-svid"], caveat=(
+        "This is the step that makes the runtime attested rather than claimed.\n"
+        "It could not have run earlier: the entry names an agent that did not exist yet."
+    ))
+    entry = subprocess.run(["make", "--no-print-directory", "spire-entry", f"ULID={ulid}"],
+                           capture_output=True, text=True, cwd=ROOT)
+    if entry.returncode != 0:
+        detail = (entry.stderr or entry.stdout).strip().splitlines()
+        note("no SPIRE entry could be created, so this bind records a self-declared "
+             "runtime: " + (detail[-1] if detail else "no output"))
+        return "", ""
+    svid_dir = os.path.join(args.spire_dir, "svid")
+    # The SVID that NAMES this agent, once the agent has synced the entry that
+    # was just created. Both halves matter: a selector such as unix:uid matches
+    # every entry the same user owns, so several SVIDs come back and svid.0.pem
+    # is merely whichever SPIRE answered with first.
+    pem = fetch_svid(agent_bin, socket, svid_dir, ulid)
+    if not pem:
+        note(f"the Workload API returned {svid_count(svid_dir)} SVID(s), none of which "
+             f"names {ulid}; this bind records a self-declared runtime")
+        return "", ""
+    show_result(f"{pem}\n{spiffe_id_of(pem)}")
+    return pem, spiffe_id_of(pem)
 
 
 def main() -> int:
@@ -173,14 +412,39 @@ def main() -> int:
     parser.add_argument("--dsn", default=os.environ.get("PG_DSN", ""))
     parser.add_argument("--keys", default=os.environ.get("DEMO_KEYS", ".keys/demo"))
     parser.add_argument("--verify-bin", default=os.environ.get("UAI_VERIFY", "uai-verify"))
+    parser.add_argument("--ca", default=os.environ.get("UAI_API_CA", ""),
+                        help="PEM CA bundle, when the gateway serves TLS")
+    parser.add_argument("--web", default=os.environ.get("UAI_WEB", "http://localhost:8081"),
+                        help="where the browser surfaces are served, for the step-mode pointers")
+    parser.add_argument("--step", action="store_true",
+                        help="stop at every criterion, showing the call and where to look")
+    parser.add_argument("--spire-dir", default=os.environ.get("SPIRE_DIR", ".spire"),
+                        help="where the host SPIRE agent keeps its socket and its binary")
     args = parser.parse_args()
     if not args.dsn:
         raise SystemExit("--dsn is required: the demo appoints delegates, which no API route does")
 
+    globals()["STEPS"] = args.step
+    globals()["CA"] = args.ca
+    globals()["WEB"] = args.web.rstrip("/")
+
     os.makedirs(args.keys, mode=0o700, exist_ok=True)
     endpoint = args.endpoint.rstrip("/")
+    CONTEXT["endpoint"] = endpoint
 
     print(f"{BOLD}The ACME demo{RESET}  {DIM}docs/protocol/17-mvp-scope.md §24.5{RESET}")
+    if args.step:
+        print(f"{DIM}Step by step. Every criterion shows the call it made and where its"
+              f" effect became visible.{RESET}")
+        print(f"{YELLOW}This writes to the registry at {endpoint}, and UAI does not delete"
+              f" identities (INV-006).{RESET}")
+        print(f"{YELLOW}What this run creates stays there. That is the property, not a"
+              f" shortcoming.{RESET}")
+        try:
+            if input(f"\n  {DIM}[Enter] start · [q] stop{RESET}  ").strip().lower() == "q":
+                return 0
+        except (EOFError, KeyboardInterrupt):
+            return 0
 
     # ── 1–2. the organization and its owner ─────────────────────────────────
     step(1, "ACME Robotics is a legal entity with a DID")
@@ -256,6 +520,7 @@ def main() -> int:
         "signature": pre_mint.sign_object(Domain.CHALLENGE, agent_statement).as_dict(),
     }, "POST")
     uai_id, agent_did = minted["uai_id"], minted["did"]
+    CONTEXT["uai_id"], CONTEXT["agent_did"] = uai_id, agent_did
     shown(3, f"registered as {uai_id}")
 
     step(4, "the identifier is a ULID: sortable, opaque, unique")
@@ -279,19 +544,33 @@ def main() -> int:
     # ── 7. bind a runtime ───────────────────────────────────────────────────
     step(7, "an identity with no bound runtime cannot attest")
     agent_signer = Signer(agent_private, f"did:{uai_id}#key-1")
-    transport = Transport(endpoint, uai_id, agent_signer)
+    # Against a registry that verifies runtimes, a bind must present an X509-SVID
+    # as a client certificate, and everything recorded about the runtime is read
+    # off that certificate. So a SPIFFE ID is only invented when nothing is
+    # checking: inventing one against an attested registry is refused, and rightly.
+    svid_pem, spiffe = attested_svid(uai_id, args)
+    if svid_pem:
+        transport = Transport(endpoint, uai_id, agent_signer, ca=args.ca,
+                              svid=svid_pem, svid_key=svid_pem[:-len(".pem")] + ".key")
+        cert_hash = "sha256:" + hashlib.sha256(der_of(svid_pem)).hexdigest()
+    else:
+        transport = Transport(endpoint, uai_id, agent_signer, ca=args.ca)
+        spiffe = f"spiffe://uai.world/agents/{uai_id}/i/{secrets.token_hex(4)}"
+        cert_hash = "sha256:" + secrets.token_hex(32)
+    if STEPS:
+        transport = Traced(transport)
     challenge = transport.post(f"/v1/agents/{uai_id}/bind", Domain.CHALLENGE, {})
-    spiffe = f"spiffe://uai.world/agents/{uai_id}/i/{secrets.token_hex(4)}"
     binding = {"challenge": challenge["challenge"], "operation": "BIND_AGENT", "uai_id": uai_id,
                "audience": challenge["audience"], "svid_spiffe_id": spiffe,
-               "svid_cert_hash": "sha256:" + secrets.token_hex(32)}
+               "svid_cert_hash": cert_hash}
     bound = transport.post(f"/v1/agents/{uai_id}/bind", Domain.CHALLENGE, {
         "challenge": binding["challenge"], "svid_spiffe_id": spiffe,
-        "svid_cert_hash": binding["svid_cert_hash"],
+        "svid_cert_hash": cert_hash,
         "signature": agent_signer.sign_object(Domain.CHALLENGE, binding).as_dict(),
     })
     assert bound["status"] == "ACTIVE", bound
-    shown(7, f"{spiffe} → {bound['status']}")
+    shown(7, f"{spiffe} → {bound['status']}"
+          + ("  (attested by SPIRE)" if svid_pem else "  (self-declared)"))
 
     # The owner grants a capability, out of band. No API route does this, and
     # the database refuses a grant whose grantor is the agent itself.
@@ -302,7 +581,9 @@ def main() -> int:
                 '{owner_did}', now() - interval '1 minute');""")
     note("The owner granted route.optimize. An agent cannot grant itself anything.")
 
-    agent = Agent(endpoint, uai_id, agent_signer, owner_did=owner_did)
+    agent = Agent(endpoint, uai_id, agent_signer, owner_did=owner_did, ca=args.ca)
+    if STEPS:
+        agent.transport = Traced(agent.transport)
     passport = transport.post("/v1/passports/request", Domain.PASSPORT, {
         "allowed_jurisdictions": ["AR", "DE"], "restricted_jurisdictions": ["KP", "IR"],
         "capabilities": [{"capability": "route.optimize", "minAssurance": "UAI-AL0"}],
@@ -367,7 +648,9 @@ def main() -> int:
     except PolicyRefused as refused:
         note(f"Guardrail: {refused.decision.effect} — {refused.decision.reason}")
 
-    monitor = Agent(endpoint, uai_id, agent_signer, owner_did=owner_did)
+    monitor = Agent(endpoint, uai_id, agent_signer, owner_did=owner_did, ca=args.ca)
+    if STEPS:
+        monitor.transport = Traced(monitor.transport)
     report = monitor.report_harm(
         subject_agent_did=agent_did, subject_owner_did=owner_did,
         harm_categories=[{"category": "UNAUTHORIZED_ACCESS", "severity": 3},
@@ -417,7 +700,18 @@ def main() -> int:
             VALUES ('del-{i}', 'uai:delegate:01JY8RD4{i:018d}', '{did}', '{country}',
                     'Delegate {country}', '\\x{auth.credential_id().hex()}',
                     '{json.dumps(auth.public_jwk)}'::jsonb,
-                    'sha256:{hashlib.sha256(auth.credential_id()).hexdigest()}');""")
+                    'sha256:{hashlib.sha256(auth.credential_id()).hexdigest()}')
+            -- A second run against a registry that kept the first one's rows is
+            -- the normal case for `make walkthrough`, and it is a delegate
+            -- enrolling a new authenticator -- exactly what happens when someone
+            -- loses a hardware key. Without this the run died here, and the
+            -- reason (a primary key from a previous run) named nothing.
+            ON CONFLICT (id) DO UPDATE SET
+                webauthn_credential_id = EXCLUDED.webauthn_credential_id,
+                webauthn_public_key    = EXCLUDED.webauthn_public_key,
+                credential_hash        = EXCLUDED.credential_hash,
+                status                 = 'ACTIVE',
+                revoked_at             = NULL;""")
 
     # Before any real vote: the same delegate's credential, used by software
     # without the human. This is the threat INV-005 is actually about — not a
@@ -496,7 +790,9 @@ def main() -> int:
     # The administrator is a registered identity like any other: it signs, and
     # the signature is what attributes the execution to a person.
     admin_uai, admin_signer = register_admin(endpoint, args, owner, owner_did, admin_key_path)
-    admin = Transport(endpoint, admin_uai, admin_signer)
+    admin = Transport(endpoint, admin_uai, admin_signer, ca=args.ca)
+    if STEPS:
+        admin = Traced(admin)
     executed = admin.post(f"/v1/revocations/{decision_id}/execute", Domain.REVOCATION,
                           {"decision_id": decision_id})
     assert executed["status"] == "REVOKED", executed
@@ -529,8 +825,16 @@ def main() -> int:
     anchors_path = os.path.join(args.keys, "anchors.json")
     with open(anchors_path, "w") as handle:
         json.dump(anchors, handle)
-    out = subprocess.run([args.verify_bin, "-endpoint", endpoint, "-anchors", anchors_path,
-                          "-v", uai_id], capture_output=True, text=True)
+    verify_cmd = [args.verify_bin, "-endpoint", endpoint, "-anchors", anchors_path]
+    if args.ca:
+        verify_cmd += ["-ca", args.ca]
+    verify_cmd += ["-v", uai_id]
+    show_command([" ".join(["uai-verify"] + verify_cmd[1:])], caveat=(
+        "This is the whole point: a separate program, given the identifier and the\n"
+        "pinned anchors, rebuilds the history from signatures alone. It does not\n"
+        "trust the gateway it is reading -- everything it returns is checked."
+    ))
+    out = subprocess.run(verify_cmd, capture_output=True, text=True)
     print(out.stdout.rstrip())
     if out.returncode != 0:
         print(out.stderr.rstrip(), file=sys.stderr)

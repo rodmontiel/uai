@@ -26,6 +26,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -52,6 +54,8 @@ func main() {
 			"trust anchors file (default: fetch them once from -endpoint and say so)")
 		verbose = flag.Bool("v", false, "print every check, not only the failures")
 		jsonOut = flag.Bool("json", false, "machine-readable output")
+		ca      = flag.String("ca", envOr("UAI_API_CA", ""),
+			"PEM CA bundle to verify an https gateway's certificate with")
 	)
 	flag.Usage = usage
 	flag.Parse()
@@ -60,13 +64,27 @@ func main() {
 		os.Exit(2)
 	}
 
+	client, err := httpClient(*ca)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
 	v := &verifier{
 		endpoint: strings.TrimRight(*endpoint, "/"),
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     client,
 		verbose:  *verbose,
 	}
 	report, err := v.run(flag.Arg(0), *anchorsPath)
 	if err != nil {
+		if strings.Contains(err.Error(), "certificate signed by unknown authority") && *ca == "" {
+			// The gateway is fine and its certificate is fine. Nothing here was
+			// told which CA issued it, and that is invisible in the message.
+			fmt.Fprintln(os.Stderr, "error:", err)
+			fmt.Fprintln(os.Stderr,
+				"  This gateway serves TLS and no CA was given.\n"+
+					"  Add -ca .spire/bootstrap.pem, or export UAI_API_CA.")
+			os.Exit(2)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
@@ -308,7 +326,7 @@ func (v *verifier) run(uaiID, anchorsPath string) (Report, error) {
 		// the current key set would silently invalidate history on every
 		// rotation, which is the most common verification bug in systems
 		// like this.
-		pub, err := keys.at(a.Signature.KID, a.Timestamp)
+		pub, err := keys.at(a.Signature.KID, a.Timestamp.Time)
 		if err != nil {
 			v.fail("action "+short(ev.EventID), "%v", err)
 			continue
@@ -614,4 +632,34 @@ func (v *verifier) checkReceipt(r *storedReceipt, statement []byte, cp receipt.C
 			r.CheckpointSize)
 	}
 	return nil
+}
+
+// httpClient builds the client this tool reads a gateway with.
+//
+// A gateway that verifies runtime identity serves TLS, and its certificate is
+// issued by the deployment's own CA -- one no public trust store knows. Without
+// a way to name that CA, the one tool whose whole purpose is to trust nothing
+// but public keys could only reach a gateway that verifies nothing.
+//
+// A path, and never a flag that skips verification. This tool's output is used
+// to decide whether an identity is real; a mode where anything on the path
+// could answer for the registry would make that output worthless exactly when
+// it matters.
+func httpClient(ca string) (*http.Client, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	if ca == "" {
+		return client, nil
+	}
+	pem, err := os.ReadFile(ca)
+	if err != nil {
+		return nil, fmt.Errorf("reading the CA bundle: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("%s holds no PEM certificate", ca)
+	}
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+		RootCAs: pool, MinVersion: tls.VersionTLS12,
+	}}
+	return client, nil
 }

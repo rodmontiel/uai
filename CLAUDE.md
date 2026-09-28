@@ -253,3 +253,13 @@ autores angostó el protocolo sin decirlo.
     `nuke` borra la base y deja las llaves, y entonces `uai-register owner` se niega
     correctamente y sin salida. Una negativa sin siguiente paso enseña a borrar claves privadas
     para destrabarse, que es exactamente lo que la negativa existía para evitar.
+36. **Re-serializar lo recibido es cambiar el documento antes de verificarlo.** El campo
+    `timestamp` era un `time.Time`, y el RFC3339Nano de Go borra los ceros finales de los
+    decimales: `...04.505890Z` volvía a salir como `...04.50589Z`. Los bytes canónicos de §10.4
+    se calculaban entonces sobre un documento que el agente nunca mandó, la firma no daba, y se
+    le informaba al agente que su firma era inválida. Como Python emite seis decimales y
+    JavaScript tres, una de cada diez acciones se rechazaba al azar culpando al cliente. JCS
+    preserva los strings tal cual; canonicalizar lo firmado exige conservar lo escrito.
+37. **Una falla intermitente no se bisecta a ojo.** Concluí "es el SDK" con dos corridas de cada
+    lado y estaba mal: el bug tenía ~30% por corrida y existía desde antes. Con una falla que no
+    es determinista, medir de a dos muestras produce la respuesta que uno ya esperaba.

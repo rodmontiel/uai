@@ -483,11 +483,25 @@ Cada una falla si algo anda mal. Ninguna es decorativa.
 
 ```bash
 make demo        # el escenario completo: 21/21 criterios
+make walkthrough # el mismo escenario, de a un criterio, sobre tu propio stack
 make attested    # que el runtime lo certifique SPIRE y no el propio agente: 7/7
 make pentest     # 16 ataques desde afuera; falla si alguno funciona
 make invariants  # 88 operaciones prohibidas; falla si alguna se permite
 make check       # todo lo que tiene que pasar antes de un commit
 ```
+
+**`make walkthrough`** es `make demo` a velocidad de lectura. Para en cada uno de los 21
+criterios, imprime la llamada que acaba de hacer como un comando que podrías haber tipeado vos
+—un `curl` de verdad, un `psql` de verdad, o el SDK cuando la llamada va firmada—, muestra lo que
+volvió, y te dice qué página abrir antes de que aprietes Enter. Esa es la diferencia que importa:
+`make demo` se arma una base y un gateway descartables y los destruye, así que nada de lo que hace
+se ve nunca en el navegador. El walkthrough escribe sobre el stack que tenés corriendo, que es el
+que leen las páginas.
+
+El precio es que lo que crea se queda. UAI no borra identidades, así que un walkthrough deja atrás
+una organización, un dueño y un agente revocado — y eso es la garantía funcionando, no una fuga.
+Las llamadas firmadas se imprimen como lo que mandó el SDK y no como un `curl` para pegar: la
+firma cubre el método, la URL y el cuerpo, así que una copia no validaría.
 
 **`make pentest`** es la más ilustrativa para alguien que quiere entender qué protege el sistema.
 Ataca a una API real desde afuera, con lo único que tendría un atacante: una identidad propia y

@@ -9,6 +9,7 @@ paying; a second one, for convenience over HTTP, is not.
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
@@ -27,13 +28,35 @@ MAX_RESPONSE = 4 << 20
 class Transport:
     """Signed and unsigned calls to one gateway, as one identity."""
 
-    def __init__(self, endpoint: str, uai_id: str, signer: Signer, timeout: float = 30.0) -> None:
+    def __init__(self, endpoint: str, uai_id: str, signer: Signer, timeout: float = 30.0,
+                 ca: str = "", svid: str = "", svid_key: str = "") -> None:
         if not uai_id:
             raise ValueError("the agent's UAI-ID is required")
         self.endpoint = endpoint.rstrip("/")
         self.uai_id = uai_id
         self.signer = signer
         self.timeout = timeout
+        # A gateway that verifies runtime identity serves TLS, because an SVID is
+        # presented as a client certificate and a plain connection has nowhere to
+        # put one.  Its certificate is issued by the deployment's own CA, which no
+        # public trust store knows, so without this the SDK could only reach a
+        # gateway that verifies nothing.
+        #
+        # A path, never a "skip verification" switch: an SDK that could be told to
+        # trust any certificate would let anything on the path read an agent's
+        # traffic and answer for the registry.  If you do not have the CA, that is
+        # the problem to fix.
+        self.context = ssl.create_default_context(cafile=ca) if ca else None
+        # The agent's X509-SVID, presented as a client certificate. A registry
+        # that verifies runtimes reads WHERE an agent runs off this certificate
+        # and never off the request body, so an agent with no SVID to present
+        # cannot bind there at all -- which is the point of §9.1, not a gap.
+        if svid:
+            if self.context is None:
+                raise ValueError(
+                    "an SVID is presented over TLS, so a CA is needed to verify the "
+                    "gateway in return: pass ca= as well")
+            self.context.load_cert_chain(svid, svid_key or svid)
 
     def get(self, path: str) -> Any:
         return self._send("GET", path, None, {})
@@ -75,7 +98,8 @@ class Transport:
         for key, value in headers.items():
             request.add_header(key, value)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout,
+                                        context=self.context) as response:
                 return _decode(response.read(MAX_RESPONSE + 1))
         except urllib.error.HTTPError as exc:
             payload = exc.read(MAX_RESPONSE + 1)
@@ -88,7 +112,14 @@ class Transport:
                             "detail": payload.decode("utf-8", "replace").strip()}
             raise Problem(exc.code, document) from None
         except urllib.error.URLError as exc:
-            raise UAIError(f"{method} {path}: {exc.reason}") from None
+            hint = ""
+            if isinstance(exc.reason, ssl.SSLCertVerificationError) and self.context is None:
+                # The one failure whose cause is invisible in its message: the
+                # gateway is fine, the certificate is fine, and nothing here was
+                # told which CA issued it.
+                hint = ("\n  This gateway serves TLS and no CA was given. Pass ca= to "
+                        "Transport/Agent, or set UAI_API_CA.")
+            raise UAIError(f"{method} {path}: {exc.reason}{hint}") from None
 
 
 def _decode(raw: bytes) -> Any:
