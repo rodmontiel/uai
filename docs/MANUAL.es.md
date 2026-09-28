@@ -339,8 +339,23 @@ Ninguna de las dos sola prueba nada, y por eso no hay un botón para esto.
 datos y no la API, y eso es a propósito: una ruta que pudiera llamar cualquiera haría que
 "registrado a nombre de un dueño" significara "registrado a nombre de lo que alguien tipeó".
 
+Definí las dos direcciones una sola vez. `owner` y `show` van directo a la base; `agent` y `bind`
+pasan por el gateway, y toman esto sin que haya que decírselo:
+
 ```bash
 export PG_DSN="postgres://uai:uai@localhost:5432/uai?sslmode=disable"
+export UAI_ENDPOINT="https://localhost:8080"
+export UAI_API_CA=".spire/bootstrap.pem"
+```
+
+Las dos últimas son para un stack **con atestación**, que sirve TLS: un SVID es un certificado de
+cliente, y en una conexión plana no hay dónde ponerlo. `.spire/bootstrap.pem` es la raíz de
+confianza que emitió el SPIRE que está corriendo — la misma contra la que el gateway verifica a los
+clientes, así que las dos direcciones confían en una sola raíz. Con la atestación apagada el gateway
+sirve HTTP plano: usá `http://127.0.0.1:8080` y `unset UAI_API_CA`. `./deploy.sh up` imprime el par
+correcto para el stack que acaba de levantar, y `./deploy.sh status` dice en cuál estás.
+
+```bash
 go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.example
 ```
 
@@ -414,9 +429,17 @@ go run ./tools/uai-register show
 
 Y en el navegador, pegá el UAI-ID en `http://localhost:8081/verify.html`.
 
-> Cuando el gateway sirve TLS —cosa que hace siempre que la atestación está encendida— agregale
-> `-endpoint https://localhost:8080 -ca .spire/bootstrap.pem` a cada comando de `uai-register`.
-> `./deploy.sh status` te dice en cuál de los dos estás.
+En una shell donde no las exportaste, los mismos dos valores van en la línea de comando —
+`-endpoint` y `-ca` le ganan al entorno:
+
+```bash
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk \
+  -svid .spire/svid -endpoint https://localhost:8080 -ca .spire/bootstrap.pem
+```
+
+Contra un gateway con TLS, dejar el CA afuera no es una versión más corta del mismo comando: el
+cliente se queda sin nada contra qué verificar al gateway, y el pedido falla antes de llegar a todo
+esto. `-ca` es cómo decís a qué SPIRE le creés — no un interruptor que apaga la verificación.
 
 ### Las cinco pantallas
 

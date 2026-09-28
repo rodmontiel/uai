@@ -338,8 +338,23 @@ mine". Neither alone proves anything, which is why there is no button for it.
 database rather than the API, and that is deliberate: a route anyone could call would make
 "registered to an owner" mean "registered to a name somebody typed".
 
+Set both addresses once. `owner` and `show` read the database directly; `agent` and `bind` go
+through the gateway, and pick these up without being told:
+
 ```bash
 export PG_DSN="postgres://uai:uai@localhost:5432/uai?sslmode=disable"
+export UAI_ENDPOINT="https://localhost:8080"
+export UAI_API_CA=".spire/bootstrap.pem"
+```
+
+The last two are for an **attested** stack, which serves TLS: an SVID is a client certificate, and
+a plain connection has nowhere to put one. `.spire/bootstrap.pem` is the trust root the running
+SPIRE issued — the same one the gateway verifies clients against, so both directions trust one
+root. With attestation off the gateway serves plain HTTP: use `http://127.0.0.1:8080` and
+`unset UAI_API_CA`. `./deploy.sh up` prints the right pair for the stack it just started, and
+`./deploy.sh status` says which one you are on.
+
+```bash
 go run ./tools/uai-register owner -name "ACME Robotics" -org-did did:web:acme.example
 ```
 
@@ -413,9 +428,17 @@ go run ./tools/uai-register show
 
 And in the browser, paste the UAI-ID into `http://localhost:8081/verify.html`.
 
-> When the gateway serves TLS — which it does whenever attestation is on — add
-> `-endpoint https://localhost:8080 -ca .spire/bootstrap.pem` to every `uai-register` command.
-> `./deploy.sh status` says which one you are on.
+In a shell where you did not export them, the same two values go on the command line — `-endpoint`
+and `-ca` override the environment:
+
+```bash
+go run ./tools/uai-register bind -uai-id uai:agent:01M3D51K66… -key .keys/routeplanner.jwk \
+  -svid .spire/svid -endpoint https://localhost:8080 -ca .spire/bootstrap.pem
+```
+
+Against a TLS gateway, leaving the CA out is not a smaller version of the same command: the client
+then has nothing to verify the gateway against, and the request fails before any of this is
+reached. `-ca` is how you say which SPIRE you trust — not a switch that turns checking off.
 
 ### The five surfaces
 

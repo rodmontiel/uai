@@ -777,8 +777,7 @@ func (c *client) do(method, path string, body, out any, signer uaicrypto.Signer,
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("%s %s: %w\n"+
-			"  Is the gateway running? ./deploy.sh up, or make run-gateway", method, url, err)
+		return fmt.Errorf("%s %s: %w\n%s", method, url, err, dialHint(err))
 	}
 	defer resp.Body.Close()
 	payload, _ := io.ReadAll(resp.Body)
@@ -800,8 +799,18 @@ func problem(method, url string, status int, payload []byte) error {
 		Remediation string `json:"remediation"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.Title == "" {
-		return fmt.Errorf("%s %s → %d\n  %s", method, url, status,
-			strings.TrimSpace(string(payload)))
+		body := strings.TrimSpace(string(payload))
+		// Not a UAI problem document, because it never reached the application:
+		// Go's TLS server answers a plain HTTP request with this, which is why
+		// the case arrives here and not as a dial error.
+		if strings.Contains(body, "HTTP request to an HTTPS server") {
+			return fmt.Errorf("%s %s → %d\n  %s\n"+
+				"  This gateway serves TLS, and the endpoint says http.\n"+
+				"  Use -endpoint https://localhost:8080 -ca .spire/bootstrap.pem,\n"+
+				"  or export UAI_ENDPOINT and UAI_API_CA as `./deploy.sh up` prints them.",
+				method, url, status, body)
+		}
+		return fmt.Errorf("%s %s → %d\n  %s", method, url, status, body)
 	}
 	msg := fmt.Sprintf("%s %s → %d %s\n  %s", method, url, status, p.Title, p.Detail)
 	if p.Remediation != "" {
@@ -857,4 +866,36 @@ func slug(s string) string {
 		return "agent"
 	}
 	return out
+}
+
+// dialHint turns a transport failure into the one sentence that fixes it.
+//
+// All of these used to print "Is the gateway running?", which is right for a
+// refused connection and wrong for every other case: against a gateway that is
+// running and serving TLS it sends the reader to restart a healthy stack
+// instead of to the flag they left out. A remediation that is wrong most of the
+// time is worse than none -- it is followed.
+func dialHint(err error) string {
+	var unknown x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	text := err.Error()
+	switch {
+	case errors.As(err, &unknown):
+		return "  The gateway serves TLS and nothing here says which CA to trust.\n" +
+			"  Add -ca .spire/bootstrap.pem, or export UAI_API_CA=.spire/bootstrap.pem.\n" +
+			"  `./deploy.sh up` prints the pair that matches the stack it started."
+	case errors.As(err, &hostname):
+		return "  The gateway's certificate does not name this host. Reach it by the name\n" +
+			"  the certificate carries, or re-mint it with `./deploy.sh up`."
+	case errors.As(err, &invalid):
+		return "  The gateway's certificate is not valid right now. Every SVID expires --\n" +
+			"  that is the point of them. `./deploy.sh up` mints a fresh one."
+	case strings.Contains(text, "server gave HTTP response to HTTPS client"):
+		return "  This gateway serves plain HTTP, and the endpoint says https.\n" +
+			"  Use -endpoint http://127.0.0.1:8080 and unset UAI_API_CA.\n" +
+			"  `./deploy.sh status` says which one it is serving."
+	default:
+		return "  Is the gateway running? ./deploy.sh up, or make run-gateway"
+	}
 }

@@ -243,6 +243,20 @@ up() {
     say
     say "  ${BOLD}Open${RESET}  http://localhost:${WEB_PORT}"
     say "  ${DIM}The verify page checks proofs in your browser. Everything else is a view.${RESET}"
+    # Printed rather than left to be remembered, because the right answer changes
+    # with the mode this run started in: the address and the CA are wrong half
+    # the time otherwise, and the symptom is a TLS error that names neither.
+    say
+    say "  ${BOLD}To register from this shell${RESET}"
+    say "    export PG_DSN=\"$PG_DSN\""
+    say "    export UAI_ENDPOINT=\"$scheme://localhost:$GATEWAY_PORT\""
+    if [ "$scheme" = https ]; then
+        say "    export UAI_API_CA=\".spire/bootstrap.pem\""
+    else
+        # Cleared, not omitted: a CA exported during an attested run would stay
+        # in the shell and be handed to a gateway that is no longer serving TLS.
+        say "    unset UAI_API_CA"
+    fi
     if [ -z "${UAI_SPIRE_BUNDLE:-}" ]; then
         say
         say "  ${DIM}Runtime attestation is off: bindings will record runtimes agents"
