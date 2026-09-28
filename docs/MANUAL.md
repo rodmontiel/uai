@@ -540,6 +540,8 @@ Phase 13.
 | The gateway exits with `permission denied` on `/keys/issuer.jwk` | The key is copied into a service-owned volume at startup. Running `./deploy.sh up` again redoes it |
 | The gateway will not start and complains about the issuer key | The key is never generated at boot, on purpose: one that changed on every restart would issue credentials that later fail to verify. `make issuer-key` |
 | The gateway warns `runtime attestation disabled` | Normal and fine. Without SPIRE configured it records self-declared runtimes; the warning exists so the difference is not invisible |
+| `package slices is not in GOROOT (/usr/src/slices)` | The `go` being used is **gccgo**, which Ubuntu's `golang-go` and `gccgo-go` packages install at `/usr/bin/go`. It is a different compiler and cannot build this. `make check-go` says which toolchain the build will use; install an official one from <https://go.dev/dl/> and put it ahead of `/usr/bin` on PATH |
+| `uai-register` refuses, saying it is running as root | You used `sudo`, and nothing here needs it: the database is reached over TCP and the keys go into your working tree. Run under sudo, the key is written as root and unreadable to you afterwards — which surfaces much later as a permission error on a file that looks fine |
 | `make demo` says the port is in use | A previous run is still around. The target tries to clean it up; if not, `make demo DEMO_PORT=9999` |
 | Everything is strange after poking at things | `make nuke && make dev` — deletes the volumes and starts clean |
 

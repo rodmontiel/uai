@@ -29,6 +29,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # Names the toolchain before anything compiles. A build that picks up
+      # gccgo fails with "package slices is not in GOROOT", which reads like a
+      # broken checkout rather than like the wrong compiler.
+      - name: which Go
+        run: make check-go
       - name: build
         run: go build ./...
       - name: vet and gofmt

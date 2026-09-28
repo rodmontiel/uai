@@ -4,7 +4,25 @@
 # implemented yet are deliberately absent rather than present-and-failing:
 # see docs/protocol/19-roadmap.md for what is coming.
 SHELL := /bin/bash
-GO ?= $(shell command -v go 2>/dev/null || echo $(HOME)/.local/go/bin/go)
+# The Go toolchain, chosen by VERSION rather than by whichever binary is first
+# on PATH. tools/find-go.sh explains why that distinction matters.
+GO_REQUIRED := $(shell sed -n 's/^go \([0-9][0-9.]*\).*/\1/p' go.mod)
+GO ?= $(shell ./tools/find-go.sh 2>/dev/null)
+
+.PHONY: check-go
+check-go: ## Report which Go toolchain the other targets will use
+	@test -n "$(GO)" || { \
+		echo "No Go toolchain new enough to build this module (go.mod needs $(GO_REQUIRED))."; \
+		echo; \
+		echo "  on PATH: $$(command -v go 2>/dev/null || echo none)"; \
+		command -v go >/dev/null 2>&1 && echo "           $$(go version 2>&1 | head -1)"; \
+		echo; \
+		echo "Ubuntu's golang-go and gccgo-go install gccgo, which cannot build this:"; \
+		echo "it fails with \"package slices is not in GOROOT\" rather than a version"; \
+		echo "error. Install an official toolchain from https://go.dev/dl/, put it"; \
+		echo "ahead of /usr/bin on PATH, or pass GO=/path/to/go."; \
+		exit 1; }
+	@echo "$(GO)  ($$($(GO) version))"
 PG_DSN ?= postgres://uai:uai@localhost:5432/uai?sslmode=disable
 # The credential issuer key. It is never generated at boot: a key that changes on
 # restart issues credentials that stop verifying, and the operator would find out
@@ -282,6 +300,21 @@ spire-up: spire-version-check ## Start the SPIRE agent on the host and bootstrap
 	@# would make the first connection the one worth attacking.
 	@$(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server bundle show > $(SPIRE_DIR)/bootstrap.pem
 	@test -s $(SPIRE_DIR)/bootstrap.pem || { echo "the SPIRE server returned no bundle"; exit 1; }
+	@# An agent that already attested caches its own copy of the bundle, and
+	@# that copy wins over trust_bundle_path. When the server's CA has rotated
+	@# since -- ca_ttl is 24h, so a stack left running over a weekend has -- the
+	@# agent refuses the server with "certificate signed by unknown authority",
+	@# which names neither the rotation nor the cache. Comparing what it
+	@# bootstrapped with against what the server says now makes that a reset
+	@# instead of a dead end.
+	@if [ -f $(SPIRE_DIR)/data/.bootstrapped.pem ] && \
+		! cmp -s $(SPIRE_DIR)/data/.bootstrapped.pem $(SPIRE_DIR)/bootstrap.pem; then \
+		echo "the SPIRE server's CA changed; discarding the agent's cached state"; \
+		test -f $(SPIRE_DIR)/agent.pid && kill $$(cat $(SPIRE_DIR)/agent.pid) 2>/dev/null || true; \
+		rm -f $(SPIRE_DIR)/agent.pid; \
+		rm -rf $(SPIRE_DIR)/data; mkdir -p $(SPIRE_DIR)/data; \
+	fi
+	@cp $(SPIRE_DIR)/bootstrap.pem $(SPIRE_DIR)/data/.bootstrapped.pem
 	@# Guard and start in ONE shell. Make runs each recipe line in its own, so
 	@# an `exit 0` on the line above only ends that line -- the first version of
 	@# this printed "already running" and then started a second agent beside the
@@ -301,6 +334,24 @@ spire-up: spire-version-check ## Start the SPIRE agent on the host and bootstrap
 		echo $$! > $(SPIRE_DIR)/agent.pid; \
 	fi
 	@for i in $$(seq 1 40); do test -S $(SPIRE_DIR)/public/api.sock && break; sleep 1; done
+	@# One retry from a clean slate. The bundle comparison above catches the
+	@# cause we know about; this catches the rest, because every way an agent's
+	@# cached state can disagree with its server ends in the same place -- a
+	@# crash naming a certificate, and a developer with no reason to suspect a
+	@# directory. Discarding that state costs nothing: it is a cache.
+	@if [ ! -S $(SPIRE_DIR)/public/api.sock ]; then \
+		echo "the agent did not attest; discarding its cached state and retrying once"; \
+		tail -1 $(SPIRE_DIR)/agent.log | sed 's/^/    /'; \
+		test -f $(SPIRE_DIR)/agent.pid && kill $$(cat $(SPIRE_DIR)/agent.pid) 2>/dev/null || true; \
+		rm -f $(SPIRE_DIR)/agent.pid; rm -rf $(SPIRE_DIR)/data; mkdir -p $(SPIRE_DIR)/data; \
+		cp $(SPIRE_DIR)/bootstrap.pem $(SPIRE_DIR)/data/.bootstrapped.pem; \
+		token=$$($(COMPOSE) exec -T spire-server /opt/spire/bin/spire-server token generate \
+			-spiffeID spiffe://$(SPIRE_TRUST_DOMAIN)/node/dev 2>/dev/null | sed 's/^Token: //'); \
+		$(SPIRE_DIR)/bin/spire-agent run -config deploy/spire/conf/agent.conf \
+			-joinToken "$$token" > $(SPIRE_DIR)/agent.log 2>&1 & \
+		echo $$! > $(SPIRE_DIR)/agent.pid; \
+		for i in $$(seq 1 40); do test -S $(SPIRE_DIR)/public/api.sock && break; sleep 1; done; \
+	fi
 	@test -S $(SPIRE_DIR)/public/api.sock || { \
 		echo "the SPIRE agent did not come up:"; tail -5 $(SPIRE_DIR)/agent.log; exit 1; }
 	@echo "SPIRE agent attested as $$(grep -o 'spiffe://$(SPIRE_TRUST_DOMAIN)/spire/agent/[^\"]*' \
@@ -449,7 +500,7 @@ pentest-down:
 	@$(CONTAINER) rm -f uai-pg-pentest >/dev/null 2>&1 || true
 
 .PHONY: build
-build: ## Build everything
+build: check-go ## Build everything
 	$(GO) build ./...
 
 .PHONY: test
@@ -557,7 +608,7 @@ manuals: ## Check that both manuals describe the same software
 	$(GO) test ./test/docs/ -count=1
 
 .PHONY: check
-check: build lint test conformance vectors-check policy-verify threats manuals ## Everything that must pass before a commit
+check: check-go build lint test conformance vectors-check policy-verify threats manuals ## Everything that must pass before a commit
 
 ## ---------- container images ----------
 .PHONY: image

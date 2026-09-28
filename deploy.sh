@@ -26,7 +26,10 @@ PG_PORT="${POSTGRES_PORT:-5432}"
 PG_DSN="${PG_DSN:-postgres://uai:uai@localhost:${PG_PORT}/uai?sslmode=disable}"
 ISSUER_KEY="${ISSUER_KEY:-.keys/issuer.jwk}"
 ISSUER_DID="${ISSUER_DID:-did:web:credentials.uai.world}"
-GO="${GO:-$(command -v go 2>/dev/null || echo "$HOME/.local/go/bin/go")}"
+# Chosen by version, not by PATH order: a distribution package can put gccgo at
+# /usr/bin/go, and gccgo fails with "package slices is not in GOROOT" rather
+# than with a version error. See tools/find-go.sh.
+GO="${GO:-$(./tools/find-go.sh 2>/dev/null || true)}"
 
 if [ "$CONTAINER" != podman ]; then
     COMPOSE=(docker compose -f "$COMPOSE_FILE")
@@ -98,13 +101,16 @@ seed_secrets() {
         script="$script && cp /tls/tls.pem /dst/tls.pem && cp /tls/tls.key /dst/tls.key"
         what="$what tls.pem tls.key"
     fi
+    # The volume is emptied first. Leaving a TLS pair from a previous run beside
+    # a bundle that no longer matches it is the exact state that produced an
+    # unexplainable handshake failure.
     "$CONTAINER" run --rm \
         -v uai_keys:/dst \
         -v "$PWD/.keys:/src:ro" \
         -v "$PWD/.spire/gateway:/tls:ro" \
         --entrypoint sh \
         "$(pg_image)" -c \
-        "$script && chown 65532:65532 /dst/* && chmod 400 /dst/*" \
+        "rm -f /dst/* && $script && chown 65532:65532 /dst/* && chmod 400 /dst/*" \
         >/dev/null
     say "    uai_keys: $what  ${DIM}(0400, owned by the service user)${RESET}"
 }
@@ -145,7 +151,14 @@ wait_for() {
 up() {
     need "$CONTAINER"
     need psql "Install the PostgreSQL client: it applies the schema."
-    [ -x "$GO" ] || need go "Install Go 1.27, or set GO=/path/to/go."
+    if [ -z "$GO" ] || [ ! -x "$GO" ]; then
+        warn "No Go toolchain new enough to build this module."
+        say "    on PATH: $(command -v go 2>/dev/null || echo none)"
+        command -v go >/dev/null 2>&1 && say "             $(go version 2>&1 | head -1)"
+        say "    Ubuntu's golang-go and gccgo-go install gccgo, which cannot build this."
+        say "    Install an official toolchain from https://go.dev/dl/, or set GO=/path/to/go."
+        exit 1
+    fi
 
     issuer_key
     build
@@ -160,7 +173,18 @@ up() {
     # written into the compose file, so that a stack without attestation is a
     # configuration and not a different file.
     mkdir -p .spire
-    if [ -s .spire/bootstrap.pem ]; then
+    # Attestation is on when the SPIRE AGENT is running, not when a bundle file
+    # happens to exist. A leftover bootstrap.pem from a stack that was since
+    # nuked describes a CA that no longer exists: the gateway then served TLS
+    # with a certificate nobody could verify and every handshake failed with
+    # "bad record MAC", which names neither the stale file nor the missing
+    # server. And with no agent running, no workload can obtain an SVID anyway,
+    # so attestation would be on in name only.
+    if [ -f .spire/agent.pid ] && kill -0 "$(cat .spire/agent.pid)" 2>/dev/null; then
+        # Refreshed from the server that is running now, never read off disk.
+        "${COMPOSE[@]}" exec -T spire-server /opt/spire/bin/spire-server bundle show \
+            > .spire/bootstrap.pem
+        test -s .spire/bootstrap.pem || { warn "the SPIRE server returned no bundle"; exit 1; }
         export UAI_SPIRE_BUNDLE=/spire/bootstrap.pem
         export UAI_SPIRE_TRUST_DOMAIN="${SPIRE_TRUST_DOMAIN:-uai.test}"
         # An SVID is presented as a client certificate, so attestation needs TLS
@@ -182,7 +206,9 @@ up() {
         export UAI_TLS_CERT="" UAI_TLS_KEY=""
         export UAI_API_URL="http://uai-gateway:8080" UAI_API_CA=""
         export UAI_SCHEME=http
-        rm -f .spire/gateway/tls.pem .spire/gateway/tls.key
+        # Removed rather than left behind: a certificate from a previous run is
+        # the thing that made the stale case hard to see.
+        rm -f .spire/gateway/tls.pem .spire/gateway/tls.key .spire/bootstrap.pem
     fi
     seed_secrets
 

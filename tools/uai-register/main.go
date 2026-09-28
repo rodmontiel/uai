@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/rodmontiel/uai/internal/keyfile"
@@ -69,6 +70,38 @@ func main() {
 		fmt.Fprintf(os.Stderr, "uai-register: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// refuseRootOverAnotherUsersKeys stops `sudo uai-register` from writing keys
+// the person who ran it cannot read.
+//
+// Nothing here needs root: the database is reached over TCP and the files go
+// into the working tree. Run under sudo, keyfile.Generate writes root:root 0600
+// and every later command fails with "permission denied" on a file that looks
+// fine in `ls` -- and the fix, chown, is one nobody thinks of because the
+// original error said nothing about ownership.
+//
+// Root is only refused when it would write into somebody else's directory, so
+// an all-root container is unaffected.
+func refuseRootOverAnotherUsersKeys(dir string) error {
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	for dir != "" && dir != "/" {
+		info, err := os.Stat(dir)
+		if err != nil {
+			dir = dirOf(dir)
+			continue
+		}
+		sys, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || sys.Uid == 0 {
+			return nil
+		}
+		return fmt.Errorf("running as root, and %s belongs to uid %d.\n"+
+			"  The key would be written as root and unreadable to that user afterwards.\n"+
+			"  Nothing here needs root: drop the sudo.", dir, sys.Uid)
+	}
+	return nil
 }
 
 func usage() {
@@ -141,6 +174,9 @@ func createOwner(args []string) error {
 		return fmt.Errorf("%s already exists. An owner key is what vouches for every agent under "+
 			"it; overwriting one orphans them all. Delete it deliberately, or pass -key elsewhere",
 			*keyPath)
+	}
+	if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(dirOf(*keyPath), 0o700); err != nil {
 		return err
@@ -235,6 +271,9 @@ func registerAgent(args []string) error {
 		return fmt.Errorf("%s already exists. That key IS an identity; overwriting it would "+
 			"register a second agent whose history starts empty while the first one's stays "+
 			"under a key nobody holds", *keyPath)
+	}
+	if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
+		return err
 	}
 	owner, err := keyfile.Load(*ownerKey, *ownerDID+"#key-1")
 	if err != nil {
