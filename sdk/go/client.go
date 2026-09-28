@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -37,6 +40,12 @@ type Client struct {
 	// carries the real head precisely so a caller need not guess.
 	head Head
 	now  func() time.Time
+
+	// caErr carries a TLS configuration failure from an Option to New, since an
+	// Option cannot fail on its own. Reported rather than dropped: a client that
+	// silently fell back to the public trust store would be verifying a gateway
+	// nobody chose.
+	caErr error
 }
 
 // Head is the tip of an agent's event chain.
@@ -50,6 +59,59 @@ type Option func(*Client)
 
 // WithHTTPClient overrides the HTTP client.
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
+
+// WithCA verifies the gateway's certificate against a PEM bundle.
+//
+// A registry that verifies runtime identity serves TLS, because an SVID is
+// presented as a client certificate and a plain connection has nowhere to put
+// one. Its certificate is issued by the deployment's own CA, which no public
+// trust store knows -- so without this, every tool built on this SDK could only
+// reach a gateway that verifies nothing. Three of them could not, until this
+// existed.
+//
+// A path, and never an option to skip verification. A client that could be told
+// to trust any certificate would let anything on the path answer for the
+// registry, and nothing downstream would notice.
+//
+// An unreadable or certificate-free bundle is recorded and returned by New
+// rather than ignored: silently falling back to the public trust store would
+// turn a configuration mistake into a gateway nobody verified.
+func WithCA(path string) Option {
+	return func(c *Client) {
+		pem, err := os.ReadFile(path)
+		if err != nil {
+			c.caErr = fmt.Errorf("reading the CA bundle: %w", err)
+			return
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			c.caErr = fmt.Errorf("%s holds no PEM certificate", path)
+			return
+		}
+		c.http.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs: pool, MinVersion: tls.VersionTLS12,
+		}}
+	}
+}
+
+// WithClientCertificate presents an X509-SVID, which is what a bind needs
+// against a registry that reads the runtime off the certificate (§9.1).
+func WithClientCertificate(certPath, keyPath string) Option {
+	return func(c *Client) {
+		pair, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			c.caErr = fmt.Errorf("loading the SVID: %w", err)
+			return
+		}
+		tr, ok := c.http.Transport.(*http.Transport)
+		if !ok || tr == nil {
+			c.caErr = errors.New("an SVID is presented over TLS: pass WithCA first, " +
+				"so the gateway is verified in return")
+			return
+		}
+		tr.TLSClientConfig.Certificates = []tls.Certificate{pair}
+	}
+}
 
 // WithOwnerDID sets the owner recorded in attestations.
 func WithOwnerDID(did string) Option { return func(c *Client) { c.ownerDID = did } }
@@ -83,6 +145,9 @@ func New(baseURL, uaiID string, signer uaicrypto.Signer, opts ...Option) (*Clien
 	}
 	for _, o := range opts {
 		o(c)
+	}
+	if c.caErr != nil {
+		return nil, fmt.Errorf("uai: %w", c.caErr)
 	}
 	return c, nil
 }

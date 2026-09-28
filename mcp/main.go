@@ -32,6 +32,8 @@ func main() {
 			"path to the agent's signing key")
 		ownerDID = flag.String("owner-did", os.Getenv("UAI_OWNER_DID"),
 			"DID of the owner recorded in attestations")
+		ca = flag.String("ca", envOr("UAI_API_CA", ""),
+			"PEM CA bundle to verify an https gateway with")
 	)
 	flag.Parse()
 
@@ -50,7 +52,11 @@ func main() {
 		// the agent was doing, instead of here where an operator is looking.
 		logger.Fatalf("no signing key at %s: %v", *keyPath, err)
 	}
-	client, err := uai.New(*endpoint, *uaiID, signer, uai.WithOwnerDID(*ownerDID))
+	opts := []uai.Option{uai.WithOwnerDID(*ownerDID)}
+	if *ca != "" {
+		opts = append(opts, uai.WithCA(*ca))
+	}
+	client, err := uai.New(*endpoint, *uaiID, signer, opts...)
 	if err != nil {
 		logger.Fatalf("client: %v", err)
 	}
