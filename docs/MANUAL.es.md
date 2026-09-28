@@ -605,6 +605,9 @@ Fase 13.
 
 ## 7. Para seguir
 
+- [`Ejemplo_Practico_es.md`](Ejemplo_Practico_es.md) — la misma plataforma desde el otro lado: un
+  dueño, un agente y una acción, paso a paso, con cada comando y su salida real.
+  Escrito en español
 - [`README.md`](../README.md) — el resumen del proyecto
 - [`docs/protocol/`](protocol/) — la especificación completa, 26 secciones (en inglés: está
   pensada para presentarse ante organismos internacionales)

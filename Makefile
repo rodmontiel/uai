@@ -418,9 +418,35 @@ spire-entry: ## Register a workload entry: make spire-entry ULID=01JY… [INSTAN
 			-selector "unix:uid:$$(id -u)" -x509SVIDTTL 3600
 
 .PHONY: spire-svid
-spire-svid: ## Fetch this process's SVID through the Workload API into .spire/svid/
-	@$(SPIRE_DIR)/bin/spire-agent api fetch x509 \
-		-socketPath $(SPIRE_DIR)/public/api.sock -write $(SPIRE_DIR)/svid
+spire-svid: ## Fetch this process's SVID into .spire/svid/ [ULID=… waits for the one naming it]
+	@# With ULID, this WAITS. A registration entry is created on the server and
+	@# the agent learns about it on its own sync interval, so fetching once,
+	@# immediately after `spire-entry`, usually returns the SVIDs the agent
+	@# already held and none for the entry just made. Without the wait the next
+	@# command binds a self-declared runtime and reports success.
+	@if [ -z "$(ULID)" ]; then \
+		$(SPIRE_DIR)/bin/spire-agent api fetch x509 \
+			-socketPath $(SPIRE_DIR)/public/api.sock -write $(SPIRE_DIR)/svid; \
+	else \
+		for i in $$(seq 1 20); do \
+			$(SPIRE_DIR)/bin/spire-agent api fetch x509 \
+				-socketPath $(SPIRE_DIR)/public/api.sock -write $(SPIRE_DIR)/svid >/dev/null 2>&1; \
+			for f in $(SPIRE_DIR)/svid/svid.*.pem; do \
+				[ -e "$$f" ] || continue; \
+				if openssl x509 -in "$$f" -noout -ext subjectAltName 2>/dev/null \
+					| grep -q "/agents/$(ULID)/"; then \
+					echo "  $$f"; \
+					openssl x509 -in "$$f" -noout -ext subjectAltName 2>/dev/null \
+						| grep -o 'URI:[^,]*' | sed 's/^/  /'; \
+					exit 0; \
+				fi; \
+			done; \
+			sleep 1; \
+		done; \
+		echo "no SVID naming $(ULID) after 20s."; \
+		echo "Is there an entry for it? make spire-entry ULID=$(ULID)"; \
+		exit 1; \
+	fi
 
 ## ---------- runtime attestation, end to end ----------
 ATT_PORT ?= 8090

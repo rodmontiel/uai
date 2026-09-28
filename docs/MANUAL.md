@@ -600,6 +600,9 @@ Phase 13.
 
 ## 7. Where to go next
 
+- [`Ejemplo_Practico_es.md`](Ejemplo_Practico_es.md) — the same platform from the other end: one
+  owner, one agent and one action, step by step, with every command and its real output.
+  Written in Spanish
 - [`README.md`](../README.md) — the project summary
 - [`docs/protocol/`](protocol/) — the full specification, 26 sections
 - [`docs/protocol/13-threat-model.md`](protocol/13-threat-model.md) — what can go wrong, what stops

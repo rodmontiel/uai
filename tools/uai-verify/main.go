@@ -59,10 +59,29 @@ func main() {
 	)
 	flag.Usage = usage
 	flag.Parse()
-	if flag.NArg() != 1 {
+	// Flags written AFTER the identifier. Go's flag package stops parsing at the
+	// first word that is not a flag, so `uai-verify -v <id> -endpoint https://…`
+	// quietly turned -endpoint and its value into positional arguments and
+	// printed usage -- with no hint that the flag it was ignoring is the one the
+	// reader had just typed. Everybody writes it that way at least once.
+	rest := flag.Args()
+	var positional []string
+	for len(rest) > 0 {
+		positional = append(positional, rest[0])
+		if err := flag.CommandLine.Parse(rest[1:]); err != nil {
+			os.Exit(2)
+		}
+		rest = flag.Args()
+	}
+	if len(positional) != 1 {
 		usage()
+		if len(positional) > 1 {
+			fmt.Fprintf(os.Stderr, "\nGot %d identifiers: %s\nThis command takes exactly one.\n",
+				len(positional), strings.Join(positional, " "))
+		}
 		os.Exit(2)
 	}
+	subject := positional[0]
 
 	client, err := httpClient(*ca)
 	if err != nil {
@@ -74,8 +93,18 @@ func main() {
 		http:     client,
 		verbose:  *verbose,
 	}
-	report, err := v.run(flag.Arg(0), *anchorsPath)
+	report, err := v.run(subject, *anchorsPath)
 	if err != nil {
+		if strings.Contains(err.Error(), "HTTP request to an HTTPS server") {
+			// The gateway is serving TLS and -endpoint says http. The default is
+			// http, so this is what happens to anyone who does not pass one.
+			fmt.Fprintln(os.Stderr, "error:", err)
+			fmt.Fprintln(os.Stderr,
+				"  This gateway serves TLS, and the endpoint says http.\n"+
+					"  Add -endpoint https://localhost:8080 -ca .spire/bootstrap.pem,\n"+
+					"  or export UAI_ENDPOINT and UAI_API_CA as `./deploy.sh up` prints them.")
+			os.Exit(2)
+		}
 		if strings.Contains(err.Error(), "certificate signed by unknown authority") && *ca == "" {
 			// The gateway is fine and its certificate is fine. Nothing here was
 			// told which CA issued it, and that is invisible in the message.
