@@ -129,6 +129,11 @@ func WriteStoreError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrAppendOnly):
 		WriteProblem(w, r, http.StatusForbidden, "UAI_APPEND_ONLY", err.Error(),
 			WithRemediation("This record cannot be modified. Append a new one instead."))
+	case errors.Is(err, store.ErrKeyNotUnique):
+		WriteProblem(w, r, http.StatusConflict, "UAI_KEY_NOT_UNIQUE", err.Error(),
+			WithRemediation("Generate a new key for this identity. Two identities sharing a key "+
+				"make a signature unable to say which of them made the statement, and a "+
+				"revocation of one would leave the other operating under the same key."))
 	case errors.Is(err, store.ErrConflict):
 		WriteProblem(w, r, http.StatusConflict, "UAI_CONFLICT", err.Error())
 	default:

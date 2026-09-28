@@ -121,6 +121,8 @@ func usage() {
       Attaches a runtime, which is what takes an identity from REGISTERED to
       ACTIVE. A separate step on purpose: a SPIRE entry names the agent,
       so it cannot be created until the agent has an identifier.
+      -reuse-key registers the key already at -key instead of a new one, for a
+      key that outlived the database that recorded it.
 
   uai-register show [-dsn ...]
       Lists the owners and agents this database holds.
@@ -354,6 +356,8 @@ func registerAgent(args []string) error {
 	jurisdiction := fs.String("jurisdiction", "AR", "primary jurisdiction")
 	keyPath := fs.String("key", "", "where to write the agent's key (default .keys/<name>.jwk)")
 	bind := fs.Bool("bind", false, "also bind a runtime, so the identity becomes ACTIVE")
+	reuse := fs.Bool("reuse-key", false,
+		"register with the key already at -key instead of generating a new one")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -363,10 +367,32 @@ func registerAgent(args []string) error {
 	if *keyPath == "" {
 		*keyPath = ".keys/" + slug(*name) + ".jwk"
 	}
-	if _, err := os.Stat(*keyPath); err == nil {
-		return fmt.Errorf("%s already exists. That key IS an identity; overwriting it would "+
-			"register a second agent whose history starts empty while the first one's stays "+
-			"under a key nobody holds", *keyPath)
+	_, statErr := os.Stat(*keyPath)
+	switch {
+	case statErr == nil && !*reuse:
+		// The usual reason this file is here after `./deploy.sh nuke` is that the
+		// keys outlived the database that recorded them, and the key is still
+		// yours. Refusing without saying that teaches people to delete private
+		// keys to get unstuck, which is what the refusal exists to prevent.
+		return fmt.Errorf("%s already exists. That key IS an identity; overwriting it would\n"+
+			"  register a second agent whose history starts empty while the first one's stays\n"+
+			"  under a key nobody holds.\n\n"+
+			"  If it still names a live identity, use that one: `uai-register show` lists them.\n"+
+			"  If its database is gone, register the same key again:\n\n"+
+			"    uai-register agent -owner-did %s -name %q -reuse-key\n\n"+
+			"  Or pass -key somewhere else for a genuinely new identity.",
+			*keyPath, *ownerDID, *name)
+	case statErr != nil && *reuse:
+		return fmt.Errorf("-reuse-key was given, but %s does not exist. "+
+			"Drop the flag to generate a key there", *keyPath)
+	case statErr == nil:
+		// Reusing. Whether this key already names a live identity is the
+		// registry's call and not this tool's: the database refuses a key that
+		// belongs to another agent (UAI_KEY_NOT_UNIQUE), so a check here would
+		// be a second opinion that could disagree with the one that counts.
+		if _, err := keyfile.Load(*keyPath, "did:key:pending#key-1"); err != nil {
+			return fmt.Errorf("-reuse-key: %w", err)
+		}
 	}
 	if err := refuseRootOverAnotherUsersKeys(dirOf(*keyPath)); err != nil {
 		return err
@@ -400,8 +426,10 @@ func registerAgent(args []string) error {
 	if err := os.MkdirAll(dirOf(*keyPath), 0o700); err != nil {
 		return err
 	}
-	if err := keyfile.Generate(*keyPath, "did:key:pending#key-1"); err != nil {
-		return err
+	if !*reuse {
+		if err := keyfile.Generate(*keyPath, "did:key:pending#key-1"); err != nil {
+			return err
+		}
 	}
 	agentSigner, err := keyfile.Load(*keyPath, "did:key:pending#key-1")
 	if err != nil {
@@ -462,7 +490,11 @@ func registerAgent(args []string) error {
 	fmt.Printf("  uai-id     %s\n", minted.UAIID)
 	fmt.Printf("  did        %s\n", minted.DID)
 	fmt.Printf("  status     %s\n", minted.Status)
-	fmt.Printf("  key        %s\n", *keyPath)
+	if *reuse {
+		fmt.Printf("  key        %s  (reused)\n", *keyPath)
+	} else {
+		fmt.Printf("  key        %s\n", *keyPath)
+	}
 
 	if *bind {
 		// An SVID is presented as a client certificate, so binding an attested

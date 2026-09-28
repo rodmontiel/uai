@@ -594,6 +594,8 @@ Phase 13.
 | `uai-register owner` says `.keys/owner.jwk already exists` | Correct, and it will not overwrite it: that key vouches for every agent under it. If the owner still exists the message names it — register an agent under that one. If nothing does, re-register the key with `-reuse-key` |
 | `./deploy.sh status` says a SPIRE agent is running but the gateway started before it | A gateway takes its mode once, when it starts. Starting the agent afterwards attests nothing until `./deploy.sh up` restarts the gateway — which keeps the data |
 | `make demo` says the port is in use | A previous run is still around. The target tries to clean it up; if not, `make demo DEMO_PORT=9999` |
+| `./deploy.sh nuke` left the keys behind | On purpose: a deleted private key is gone, and the same file may still name an owner in another database. Register them again with `-reuse-key`, or delete them deliberately with `./deploy.sh nuke --keys`, which names every file it removes |
+| `UAI_KEY_NOT_UNIQUE` | That key already names another identity. One key names one: two identities sharing a key make a signature unable to say which of them made the statement, and a revocation of one would leave the other operating under the same key |
 | Everything is strange after poking at things | `make nuke && make dev` — deletes the volumes and starts clean |
 
 ---

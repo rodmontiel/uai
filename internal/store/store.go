@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,10 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrConflict is returned on a uniqueness violation that is not a fork.
 	ErrConflict = errors.New("store: conflict")
+	// ErrKeyNotUnique is returned when a public key is already registered to a
+	// different identity. Separate from ErrConflict because the caller's answer
+	// is different: not "retry", but "that key is somebody else's name".
+	ErrKeyNotUnique = errors.New("store: key already names another identity")
 	// ErrChainConflict is returned when an append references a stale chain head.
 	// The caller refetches the head and retries; the API surfaces this as
 	// 409 UAI_CHAIN_CONFLICT.
@@ -111,6 +116,17 @@ func classify(err error) error {
 	if errors.As(err, &pgErr) {
 		switch {
 		case pgErr.Code == "23505":
+			// A trigger-raised uniqueness violation carries its reason in the
+			// message and has no constraint to name, so preferring the
+			// constraint name handed the client "conflict:" and nothing after
+			// the colon -- a refusal with the reason removed.
+			if strings.HasPrefix(pgErr.Message, "UAI_KEY_NOT_UNIQUE:") {
+				return fmt.Errorf("%w: %s", ErrKeyNotUnique,
+					strings.TrimSpace(strings.TrimPrefix(pgErr.Message, "UAI_KEY_NOT_UNIQUE:")))
+			}
+			if pgErr.ConstraintName == "" {
+				return fmt.Errorf("%w: %s", ErrConflict, pgErr.Message)
+			}
 			return fmt.Errorf("%w: %s", ErrConflict, pgErr.ConstraintName)
 		case pgErr.Code == "23503":
 			return fmt.Errorf("%w: %s", ErrNotFound, pgErr.ConstraintName)

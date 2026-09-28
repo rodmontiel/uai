@@ -538,6 +538,39 @@ cualquier texto que insinúe lo contrario es un bug.
 
 ---
 
+## Empezar de cero
+
+`./deploy.sh nuke` borra la base. **Las llaves no**, y eso es a propósito: una llave privada
+borrada no se recupera, y el mismo archivo puede seguir nombrando a un dueño en otra base que
+este script no conoce.
+
+Así que después de un `nuke` tenés dos caminos, y ninguno es "borrá `.keys/` a mano":
+
+**Quedarte con las llaves** — son tuyas, lo que se perdió es el registro:
+
+```bash
+go run ./tools/uai-register owner -reuse-key -name "ACME Robotics" -org-did did:web:acme.example
+go run ./tools/uai-register agent -owner-did did:uai:owner:... -name "MiPrimerAgente" -reuse-key
+```
+
+**O empezar realmente limpio**, con las llaves incluidas. Es explícito y te dice qué borra:
+
+```bash
+./deploy.sh nuke --keys
+```
+
+🍎 **Con manzanas:** `nuke` tira los papeles de la ferretería. Las llaves físicas siguen en tu
+bolsillo — sirven, pero ya no hay registro de a qué cajón abren. Podés volver a anotarlas
+(`-reuse-key`) o tirarlas también (`--keys`). Lo que el script no hace es tirártelas sin
+preguntar.
+
+> **Una llave, una identidad.** Si intentás registrar dos agentes con la misma llave, el
+> registro lo rechaza con `UAI_KEY_NOT_UNIQUE`. No es una regla de estilo: dos identidades con
+> una llave hacen que una firma ya no diga cuál de las dos hizo la afirmación, y que revocar
+> una deje a la otra operando con la misma llave.
+
+---
+
 ## Si algo falla
 
 | Síntoma | Causa y solución |
@@ -549,6 +582,9 @@ cualquier texto que insinúe lo contrario es un bug.
 | `no SVID naming <ULID> after 20s` | No hay entrada para ese ULID. Corré `make spire-entry ULID=…` primero |
 | `UAI_OWNER_NOT_ELIGIBLE` | El dueño que nombraste no está en esta base. `go run ./tools/uai-register show` lista los que hay |
 | `.keys/owner.jwk already exists` | Está bien, no la va a pisar. Si el dueño existe, el mensaje te dice cuál es; si no existe ninguno, `uai-register owner -reuse-key` |
+| `UAI_KEY_NOT_UNIQUE` | Esa llave ya nombra a otra identidad. Una llave nombra a una sola: dos identidades compartiéndola hacen que una firma no diga cuál de las dos firmó. Generá una nueva, o usá la identidad que ya existe |
+| `.keys/<agente>.jwk already exists` | No la va a pisar: esa llave **es** una identidad. Si todavía nombra a una viva, usá esa (`uai-register show`). Si su base se borró, `-reuse-key` |
+| Querés una prueba limpia sin datos | `./deploy.sh nuke` borra la base y deja las llaves; `./deploy.sh nuke --keys` borra también las llaves, nombrando cada archivo |
 | `capability_not_granted` | Nadie te otorgó esa capacidad. Pedila y aprobala (pasos 7 y 8) |
 | `assurance_below_floor` | La capacidad pide más nivel del que la identidad tiene. Ver el paso 10 |
 | `Command 'go' not found` | Go no está en el PATH. `export PATH="$PATH:$HOME/.local/go/bin"`. `make check-go` dice qué toolchain va a usar la build |

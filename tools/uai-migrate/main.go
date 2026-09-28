@@ -67,10 +67,22 @@ func main() {
 
 	ran := 0
 	for _, f := range files {
-		name := filepath.Base(f)
+		// The ledger records a migration by its UP filename in both directions:
+		// one migration, one row, whichever way it is being applied. Looking up
+		// "0008_x.down.sql" in a ledger that holds "0008_x.up.sql" found nothing,
+		// so every rollback reported "never applied" and did nothing -- a down
+		// direction that silently no-ops is worse than one that is missing.
+		name := strings.Replace(filepath.Base(f), ".down.sql", ".up.sql", 1)
 		sum, err := checksum(f)
 		if err != nil {
 			fail(err)
+		}
+		if direction == "down" {
+			// Checksums belong to the up file, which is what "this database has
+			// this schema" means. A down file's own hash would never match.
+			if up, err := checksum(filepath.Join(*dir, name)); err == nil {
+				sum = up
+			}
 		}
 		if direction == "up" {
 			if prior, ok := done[name]; ok {

@@ -3,7 +3,7 @@
 #
 #   ./deploy.sh up        build what is missing, start everything, apply the schema
 #   ./deploy.sh down      stop everything, keep the data
-#   ./deploy.sh nuke      stop everything and delete the data
+#   ./deploy.sh nuke      stop everything and delete the data (--keys: the keys too)
 #   ./deploy.sh status    what is running, and on which ports
 #   ./deploy.sh logs [s]  follow the logs of one service, or all of them
 #   ./deploy.sh build     rebuild the images without starting anything
@@ -271,6 +271,18 @@ down() {
 }
 
 nuke() {
+    # --keys is opt-in and always will be. A private key deleted is gone: there
+    # is no second copy, and the same file may still name an owner in a database
+    # this script knows nothing about. But refusing to ever delete them left the
+    # only fresh-start path as "work out which files to remove yourself", which
+    # is a worse thing to teach.
+    local wipe_keys=no
+    case "${1:-}" in
+        --keys) wipe_keys=yes ;;
+        "")     ;;
+        *)      warn "unknown option for nuke: $1"; say "    the only option is --keys"; exit 1 ;;
+    esac
+
     step "stopping containers and deleting the data"
     "${COMPOSE[@]}" down -v >/dev/null 2>&1 || "${COMPOSE[@]}" down -v
     # The SPIRE agent's state goes with the server's. An agent holding an SVID
@@ -285,16 +297,28 @@ nuke() {
     # being obvious and starts being a dead end.
     local keys=0
     for k in .keys/*.jwk; do [ -e "$k" ] && keys=$((keys + 1)); done
-    if [ "$keys" -gt 0 ]; then
-        say
-        say "    ${BOLD}$keys key file(s) under .keys/ survived this.${RESET} They now name identities"
-        say "    no database has. The keys are still yours -- register the owner again"
-        say "    with the one you already hold:"
-        say
-        say "      uai-register owner -reuse-key -name 'ACME Robotics' -org-did did:web:acme.example"
-        say
-        say "    ${DIM}Deleting .keys/ instead is your call to make, not this script's.${RESET}"
+    [ "$keys" -gt 0 ] || return 0
+
+    if [ "$wipe_keys" = yes ]; then
+        step "deleting $keys key file(s)"
+        # Named one by one on the way out. "Deleted 18 files" is not something a
+        # person can check afterwards, and these are the files whose loss cannot
+        # be undone by re-running anything.
+        for k in .keys/*.jwk; do [ -e "$k" ] && say "    $k" && rm -f "$k"; done
+        rm -rf .keys/demo .keys/pentest
+        say "    gone. The next ./deploy.sh up creates a new issuer key."
+        return 0
     fi
+
+    say
+    say "    ${BOLD}$keys key file(s) under .keys/ survived this.${RESET} They now name identities"
+    say "    no database has. The keys are still yours, so there are two ways on:"
+    say
+    say "      ${BOLD}keep them${RESET}   register the same keys again"
+    say "        uai-register owner -reuse-key -name 'ACME Robotics' -org-did did:web:acme.example"
+    say "        uai-register agent -owner-did did:uai:owner:... -name 'MiAgente' -reuse-key"
+    say
+    say "      ${BOLD}start over${RESET}  ./deploy.sh nuke --keys   ${DIM}(deletes them, and says which)${RESET}"
 }
 
 # gateway_env prints one environment variable of the gateway container that is
@@ -362,7 +386,7 @@ logs() {
 case "${1:-}" in
     up)     up ;;
     down)   down ;;
-    nuke)   nuke ;;
+    nuke)   nuke "${2:-}" ;;
     status) status ;;
     build)  build ;;
     logs)   shift; logs "$@" ;;

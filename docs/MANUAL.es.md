@@ -599,6 +599,8 @@ Fase 13.
 | `uai-register owner` dice `.keys/owner.jwk already exists` | Está bien, y no lo va a pisar: esa llave responde por todos los agentes que cuelgan de ella. Si el dueño todavía existe, el mensaje te dice cuál es — registrá un agente bajo ese. Si no existe ninguno, volvé a registrar la llave con `-reuse-key` |
 | `./deploy.sh status` dice que hay un agente SPIRE corriendo pero el gateway arrancó antes | El gateway fija su modo una sola vez, al arrancar. Levantar el agente después no atestigua nada hasta que `./deploy.sh up` lo reinicie — y eso conserva los datos |
 | `make demo` dice que el puerto está ocupado | Quedó una corrida anterior. El propio target intenta limpiarla; si no, `make demo DEMO_PORT=9999` |
+| `./deploy.sh nuke` dejó las llaves | A propósito: una llave privada borrada no se recupera, y el mismo archivo puede seguir nombrando a un dueño en otra base. Volvé a registrarlas con `-reuse-key`, o borralas deliberadamente con `./deploy.sh nuke --keys`, que nombra cada archivo que saca |
+| `UAI_KEY_NOT_UNIQUE` | Esa llave ya nombra a otra identidad. Una llave nombra a una sola: dos identidades compartiéndola hacen que una firma no diga cuál de las dos firmó, y que revocar una deje a la otra operando con la misma llave |
 | Todo raro después de tocar cosas | `make nuke && make dev` — borra los volúmenes y arranca limpio |
 
 ---

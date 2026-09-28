@@ -263,3 +263,18 @@ autores angostó el protocolo sin decirlo.
 37. **Una falla intermitente no se bisecta a ojo.** Concluí "es el SDK" con dos corridas de cada
     lado y estaba mal: el bug tenía ~30% por corrida y existía desde antes. Con una falla que no
     es determinista, medir de a dos muestras produce la respuesta que uno ya esperaba.
+38. **`UNIQUE (a, b)` no dice nada sobre `b` solo.** `UNIQUE (agent_id, key_id)` impedía que un
+    agente tuviera dos filas `key-1` y no impedía que **dos agentes distintos registraran la
+    misma llave pública**: dos identidades cuyas firmas son indistinguibles, y una vía para que
+    un dueño cuyo agente fue revocado siga operando bajo la segunda. Lo encontré registrando dos
+    agentes con una llave y viendo entrar a los dos. Migración 0008; el thumbprint se calcula en
+    SQL para que la regla no dependa de que la aplicación se acuerde, y está fijado contra el
+    vector de RFC 8037 A.3 y no contra nuestro propio Go.
+39. **Una columna GENERATED está vacía dentro de un trigger BEFORE.** Postgres la calcula
+    después. Mi primer trigger leía `NEW.thumbprint`, que ahí siempre es NULL, y rechazaba
+    **todos** los registros — incluido el primero, legítimo. Una compuerta que rechaza todo se ve
+    igual que una que funciona, y solo se distingue probando el caso que debe PASAR.
+40. **`uai-migrate down` nunca funcionó.** Buscaba `0008_x.down.sql` en un registro que guarda
+    `0008_x.up.sql`, no lo encontraba, decía "never applied" y no hacía nada. Una dirección de
+    rollback que no-opea en silencio es peor que una que no existe: se confirma que "el rollback
+    corrió" y el esquema sigue igual.

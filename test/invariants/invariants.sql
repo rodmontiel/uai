@@ -770,4 +770,96 @@ SELECT assert_fails('GOV', 'one governance proof cannot authorize two decisions'
     VALUES ('dec-2', 'prop-1', 'UAI-INC-000041', 'ag-1', 4, 1, 0, '4-of-5',
             'sha256:' || repeat('e', 64), 'sha256:' || repeat('9', 64))$$);
 
+-- ── one key, one identity ───────────────────────────────────────────────────
+--
+-- Two agents holding the same public key make a signature unable to say which
+-- of them made the statement, and -- worse -- let an owner whose agent was
+-- revoked keep operating under a second identity with the same key. The schema
+-- only had UNIQUE (agent_id, key_id), which stops one agent having two rows
+-- called key-1 and stops nothing else. The registry accepted the pair; this is
+-- what it now refuses.
+
+-- The thumbprint is pinned to RFC 8037 A.3 rather than to our own Go, because
+-- agreeing with ourselves is not interoperability.
+DO $$
+DECLARE got text;
+BEGIN
+    got := uai_jwk_thumbprint(
+        '{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb);
+    IF got <> 'sha256:90facafea9b1556698540f70c0117a22ea37bd5cf3ed3c47093c1707282b4b89' THEN
+        RAISE NOTICE 'FAIL  KEY   thumbprint disagrees with RFC 8037 A.3: %', got;
+    ELSE
+        RAISE NOTICE 'PASS  KEY   thumbprint matches RFC 8037 A.3';
+    END IF;
+END $$;
+
+-- Member order and extra members must not change it, or the same key stored two
+-- ways would look like two keys and walk straight past the check below.
+DO $$
+DECLARE a text; b text;
+BEGIN
+    a := uai_jwk_thumbprint('{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb);
+    b := uai_jwk_thumbprint('{"x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","use":"sig","crv":"Ed25519","kty":"OKP"}'::jsonb);
+    IF a IS DISTINCT FROM b THEN
+        RAISE NOTICE 'FAIL  KEY   the same key serialized two ways gives two thumbprints';
+    ELSE
+        RAISE NOTICE 'PASS  KEY   thumbprint ignores member order and extra members';
+    END IF;
+END $$;
+
+INSERT INTO agents (id, uai_id, did, owner_id, organization_id, logical_name, agent_type,
+                    primary_jurisdiction, identity_commitment, policy_version, genesis_event_hash)
+VALUES ('ag-key-1', 'uai:agent:01JY8RA3C7K2V9M0QW4T6Z8XP1',
+        'did:uai:agent:01JY8RA3C7K2V9M0QW4T6Z8XP1', 'own-1', 'org-acme', 'KeyOne',
+        'autonomous_task_agent', 'AR', 'sha256:' || repeat('b', 64), 'GASC-2027.4',
+        'sha256:' || repeat('1', 64)),
+       ('ag-key-2', 'uai:agent:01JY8RA3C7K2V9M0QW4T6Z8XP2',
+        'did:uai:agent:01JY8RA3C7K2V9M0QW4T6Z8XP2', 'own-1', 'org-acme', 'KeyTwo',
+        'autonomous_task_agent', 'AR', 'sha256:' || repeat('c', 64), 'GASC-2027.4',
+        'sha256:' || repeat('2', 64));
+
+INSERT INTO agent_keys (id, agent_id, key_id, alg, public_jwk, protection, valid_from)
+VALUES ('ak-key-1', 'ag-key-1', 'key-1', 'EdDSA',
+        '{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb,
+        'SOFTWARE', now() - interval '1 hour');
+
+SELECT assert_fails('KEY', 'two agents cannot share one public key', $$
+    INSERT INTO agent_keys (id, agent_id, key_id, alg, public_jwk, protection, valid_from)
+    VALUES ('ak-key-2', 'ag-key-2', 'key-1', 'EdDSA',
+            '{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb,
+            'SOFTWARE', now())$$);
+
+-- The same key written with its members in another order is the same key.
+SELECT assert_fails('KEY', 'a reordered JWK is not a second key', $$
+    INSERT INTO agent_keys (id, agent_id, key_id, alg, public_jwk, protection, valid_from)
+    VALUES ('ak-key-3', 'ag-key-2', 'key-1', 'EdDSA',
+            '{"x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","crv":"Ed25519","kty":"OKP"}'::jsonb,
+            'SOFTWARE', now())$$);
+
+-- A key type nobody can canonicalize has no thumbprint, so it cannot be checked
+-- for uniqueness -- and a key that skips the check is the case this prevents.
+SELECT assert_fails('KEY', 'a key with no computable thumbprint is refused', $$
+    INSERT INTO agent_keys (id, agent_id, key_id, alg, public_jwk, protection, valid_from)
+    VALUES ('ak-key-4', 'ag-key-2', 'key-9', 'EdDSA',
+            '{"kty":"WAT","x":"zzz"}'::jsonb, 'SOFTWARE', now())$$);
+
+-- An owner's key names an owner the same way. The fixture is written out rather
+-- than selected from whatever this database happens to hold: an assertion whose
+-- subject comes from live data proves something different on every machine, and
+-- on an empty one proves nothing at all.
+INSERT INTO owners (id, uai_id, did, organization_id, display_name, jurisdiction)
+VALUES ('own-key-2', 'uai:owner:01JY8R9ZB00000000000000009',
+        'did:uai:owner:01JY8R9ZB00000000000000009', 'org-acme', 'Second Owner', 'AR');
+
+INSERT INTO owner_keys (id, owner_id, key_id, alg, public_jwk, protection, valid_from)
+VALUES ('ok-key-8', 'own-key-2', 'key-1', 'EdDSA',
+        '{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb,
+        'SOFTWARE', now() - interval '1 hour');
+
+SELECT assert_fails('KEY', 'two owners cannot share one public key', $$
+    INSERT INTO owner_keys (id, owner_id, key_id, alg, public_jwk, protection, valid_from)
+    VALUES ('ok-key-9', 'own-1', 'key-9', 'EdDSA',
+            '{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}'::jsonb,
+            'SOFTWARE', now())$$);
+
 ROLLBACK;
