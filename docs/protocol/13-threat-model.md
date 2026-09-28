@@ -178,6 +178,8 @@ threats beside it above what §20.1 records:
 | Counter-attestation by relying parties | T-11 | Selective non-attestation leaves gaps that are visible only to whoever goes looking |
 | Cross-instance fork observation | T-03 | A cloned agent is detectable in principle and detected by nobody |
 | An attestor-supplied image digest | T-03, T-07 | `image_digest` in a binding is the agent's claim about its own code. §6.8 wants the one the attestor observed, and until a selector supplies it the runtime dimension stops at AL1 |
+| The attestation selectors behind a runtime | T-03, T-07 | `runtime_identities.selectors` exists and is always empty. The registry records the SPIFFE ID the attestor issued — a NAME — and not the evidence behind it, so nothing distinguishes an identity attested on `unix:uid` (any process of that user) from one attested on an image digest. The column reads as "no selectors were used" rather than "we never recorded them" |
+| Any public view of where an agent runs | T-03, T-07 | Neither `GET /v1/agents/{id}` nor `GET /v1/verify/{id}` returns the bound runtime, and no browser surface shows it. A relying party can see that an identity is ACTIVE and what limits its assurance, but not what was attested about the process behind it. Whether that should be public is a privacy decision §12 has not made |
 
 None of these is hard in the sense of being unsolved. They are listed because a threat model that
 describes intentions in the present tense is the specific failure mode this project has committed
