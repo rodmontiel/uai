@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -104,9 +105,20 @@ func setup(t *testing.T) *fixture {
 		AssuranceLevel: "UAI-AL2", IdentityCommitment: digest(0),
 		PolicyVersion: "GASC-2027.4", GenesisEventHash: digest(1),
 	}
+	// A distinct key per fixture. The literal "abc" was shared by every agent
+	// this helper ever made, which was invisible until the registry started
+	// refusing two identities under one key -- and then it looked like the new
+	// constraint was wrong rather than the fixture. A test that could not have
+	// been written against the real rule was describing a system that no longer
+	// exists.
+	pub := make([]byte, 32)
+	if _, err := rand.Read(pub); err != nil {
+		t.Fatal(err)
+	}
 	key := store.AgentKey{
 		ID: "key-" + ulid("K"), KeyID: "key-1", Alg: "EdDSA",
-		PublicJWK:  json.RawMessage(`{"kty":"OKP","crv":"Ed25519","x":"abc"}`),
+		PublicJWK: json.RawMessage(fmt.Sprintf(`{"kty":"OKP","crv":"Ed25519","x":%q}`,
+			base64.RawURLEncoding.EncodeToString(pub))),
 		Protection: "TPM2", ValidFrom: time.Now().Add(-time.Hour),
 	}
 	if err := db.CreateAgent(ctx, agent, key); err != nil {

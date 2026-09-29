@@ -19,26 +19,39 @@ import (
 	"testing"
 )
 
-const example = "../../docs/Ejemplo_Practico_es.md"
+// Both practical examples. A gate written for one of them leaves the next one
+// unchecked, and the next one is where the commands are newest.
+var examples = []string{
+	"../../docs/Ejemplo_Practico_es.md",
+	"../../docs/Ejemplo_Practico_federation_es.md",
+}
 
 var (
 	// Commands inside fenced blocks, at the start of a line or after a pipe.
-	goRunRE  = regexp.MustCompile(`go (?:run|build -o \S+) (\./[\w./-]+)`)
-	makeRE   = regexp.MustCompile(`(?m)^\s*(?:@|&& )?make ([a-z][a-z0-9-]*)`)
-	scriptRE = regexp.MustCompile(`\./(tools/[\w.-]+\.sh)`)
+	goRunRE   = regexp.MustCompile(`go (?:run|build -o \S+) (\./[\w./-]+)`)
+	makeRE    = regexp.MustCompile(`(?m)^\s*(?:@|&& )?make ([a-z][a-z0-9-]*)`)
+	scriptRE  = regexp.MustCompile(`\./(tools/[\w.-]+\.sh)`)
 	docLinkRE = regexp.MustCompile(`\]\((?:\./)?([A-Za-z0-9_.-]+\.md)\)`)
 	deployRE  = regexp.MustCompile(`\./deploy\.sh ([a-z][a-z0-9-]*)`)
 	// A flag as written in the document: `-name` or `-name value`.
 	flagRE = regexp.MustCompile(`(?:^|\s)-([a-z][a-z0-9-]*)`)
 )
 
+// exampleText returns every practical example, concatenated. The checks below
+// ask "does everything these documents name exist", and that question does not
+// care which file a command came from -- while the failure message quotes the
+// line, which is enough to find it.
 func exampleText(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(example)
-	if err != nil {
-		t.Fatalf("the practical example must exist: %v", err)
+	var all []string
+	for _, path := range examples {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s must exist: %v", path, err)
+		}
+		all = append(all, string(b))
 	}
-	return string(b)
+	return strings.Join(all, "\n")
 }
 
 // TestEveryToolTheExampleNamesExists guards against a document that points at a
@@ -96,6 +109,7 @@ func TestEveryFlagTheExampleUsesIsDefined(t *testing.T) {
 		"uai-verify":   {"tools/uai-verify/main.go"},
 		"uai-keygen":   {"tools/uai-keygen/main.go"},
 		"uai-mcp":      {"mcp/main.go"},
+		"uai-federate": {"tools/uai-federate/main.go"},
 	}
 	defined := map[string]map[string]bool{}
 	for tool, paths := range sources {
@@ -106,7 +120,11 @@ func TestEveryFlagTheExampleUsesIsDefined(t *testing.T) {
 				t.Fatalf("%s: %v", p, err)
 			}
 			for _, m := range regexp.MustCompile(
-				`(?:flag|fs)\.(?:String|Bool|Int|Duration)\("([a-z][a-z0-9-]*)"`,
+				// Every flag constructor, not the four that happened to be in use
+				// when this was written: the first tool to declare a -flag with
+				// fs.Uint was reported as passing an undefined flag.
+				`(?:flag|fs)\.(?:String|Bool|Int|Int64|Uint|Uint64|Float64|Duration)(?:Var)?\(`+
+					`(?:&\w+,\s*)?"([a-z][a-z0-9-]*)"`,
 			).FindAllStringSubmatch(string(body), -1) {
 				defined[tool][m[1]] = true
 			}
@@ -160,12 +178,34 @@ func TestTheExampleDoesNotPromiseAKillSwitch(t *testing.T) {
 	for _, phrase := range []string{"kill switch", "apaga el agente", "detiene al agente",
 		"lo desconecta", "deja de funcionar el agente"} {
 		if strings.Contains(body, phrase) {
-			t.Errorf("the example contains %q. Revocation is participants declining to honour "+
+			t.Errorf("an example contains %q. Revocation is participants declining to honour "+
 				"a credential; nothing here stops a process.", phrase)
 		}
 	}
 	if !strings.Contains(body, "revocar no apaga nada") {
-		t.Error("the example must say plainly that revocation stops nothing")
+		t.Error("the examples must say plainly, somewhere, that revocation stops nothing")
+	}
+}
+
+// TestTheFederationExampleKeepsPeerAndAgentTrustApart. The one confusion this
+// whole feature is shaped to prevent, in the document a newcomer reads.
+func TestTheFederationExampleKeepsPeerAndAgentTrustApart(t *testing.T) {
+	b, err := os.ReadFile("../../docs/Ejemplo_Practico_federation_es.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(b)
+	for _, required := range []string{"PEER TRUST", "AGENT TRUST", "FED-001", "FED-002", "FED-003"} {
+		if !strings.Contains(body, required) {
+			t.Errorf("the federation example never mentions %s", required)
+		}
+	}
+	// And it must not claim any of the things this microsprint left out.
+	for _, outOfScope := range []string{"REGISTRY_PATH está", "propagación de revocaciones funciona",
+		"descubrimiento automático de"} {
+		if strings.Contains(body, outOfScope) {
+			t.Errorf("the federation example claims %q, which does not exist", outOfScope)
+		}
 	}
 }
 

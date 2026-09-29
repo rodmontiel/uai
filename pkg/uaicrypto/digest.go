@@ -60,6 +60,25 @@ const (
 	// identity proof, and suspending the first would then read as suspending
 	// the second.
 	DomainPassport Domain = "UAI-v1:passport"
+	// DomainFederationHello covers the REGISTRY_HELLO a registry sends to a
+	// peer. It is distinct from DomainChallenge because a challenge response
+	// proves control of an AGENT key to this registry, while a hello is one
+	// registry speaking for itself to another: one domain for both would let a
+	// binding challenge signature be replayed as a registry introducing itself.
+	DomainFederationHello Domain = "UAI-v1:federation-hello"
+	// DomainFederationAnnouncement covers a registry's signed statement about an
+	// identity under its authority. It is distinct from DomainAttestation
+	// because an agent attesting its own action and a registry vouching for an
+	// agent are different speakers: sharing a domain would let any attestation
+	// an agent ever signed be presented as its own registry's announcement.
+	DomainFederationAnnouncement Domain = "UAI-v1:federation-announcement"
+	// DomainFederationPeering covers an operator configuring a peering on their
+	// own registry. It is distinct from DomainFederationHello because a hello
+	// introduces this registry to somebody else, while a peering decides who
+	// this registry will listen to: one domain for both would let a hello that
+	// any peer has already seen be replayed as an instruction to trust its
+	// sender.
+	DomainFederationPeering Domain = "UAI-v1:federation-peering"
 )
 
 var knownDomains = map[Domain]bool{
@@ -68,6 +87,8 @@ var knownDomains = map[Domain]bool{
 	DomainRegistration: true, DomainPolicyBundle: true,
 	DomainQuarantine: true, DomainRevocation: true, DomainCheckpoint: true,
 	DomainCommitment: true, DomainAudit: true,
+	DomainFederationHello: true, DomainFederationAnnouncement: true,
+	DomainFederationPeering: true,
 	DomainCapabilityRequest: true, DomainSuspicion: true, DomainPassport: true,
 }
 

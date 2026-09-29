@@ -50,3 +50,6 @@ contracts/lib/
 /uai-mcp
 /gateway
 /ledger-writer
+
+# The federation demo's compiled gateway and its two registries' state.
+/uai-federate

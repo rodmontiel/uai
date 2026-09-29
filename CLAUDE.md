@@ -121,7 +121,32 @@ declarado existe en el repo.
   del agente directamente: sigue funcionando. Nada detuvo al código, porque nada en UAI puede.
   Lo único que cambió es que ningún participante honra su identidad — y decirlo en el momento
   más incómodo es la parte más honesta del producto.
-- Fases 11–12: sin empezar.
+- **Fases 11–12 ✅** — seguridad (gates de invariantes, modelo de amenazas validado, pentest)
+  y atestación de runtime con SPIRE sobre Podman rootless.
+- **Microsprint Federación ✅** — UAI-AS. Cada instalación puede tener número propio
+  (`UAI_ASN`), llave propia — distinta de la del emisor — y responder *¿quién es este
+  registro?*. Dos registros se configuran mutuamente a mano, se saludan con un `REGISTRY_HELLO`
+  firmado, y se pasan un `IDENTITY_ANNOUNCEMENT` sobre una identidad **que el origen emitió**.
+
+  `pkg/federation` (sin dependencias: está en el camino de verificación), migración 0010,
+  `internal/api/federation.go`, `tools/uai-federate`, `web/federation.html` y
+  `demo/federation.sh` — dos postgres y dos gateways, porque un proceso hablando consigo mismo
+  no demuestra nada sobre autonomía.
+
+  **PEER TRUST ≠ AGENT TRUST**, y el esquema lo sostiene: `federated_identities` no tiene clave
+  foránea a `agents`, y un CHECK ata cada DID al ASN bajo el que se guarda. Una firma válida no
+  es autoridad: un registro puede firmar perfectamente un anuncio sobre el agente de otro, y se
+  rechaza con `WRONG_AUTHORITY`.
+
+  El anuncio no tiene ningún campo libre y el decodificador **rechaza miembros desconocidos**.
+  Así "no debe contener prompts ni PII" deja de ser una regla de documento.
+
+  **Lo que NO se implementó** está dicho en `docs/Ejemplo_Practico_federation_es.md`:
+  REGISTRY_PATH, tránsito, ruteo tipo BGP, confederaciones, descubrimiento automático,
+  propagación de cuarentenas o de revocaciones. Las interfaces quedaron extensibles; nada de
+  eso existe.
+
+  Primer escritor de `audit_events`, que existía desde la migración 0001 y nadie usaba.
 
 `make integration` levanta Postgres, migra, siembra y corre los tests de store y API con
 `-race` más las 86 aserciones de invariantes.
@@ -278,3 +303,20 @@ autores angostó el protocolo sin decirlo.
     `0008_x.up.sql`, no lo encontraba, decía "never applied" y no hacía nada. Una dirección de
     rollback que no-opea en silencio es peor que una que no existe: se confirma que "el rollback
     corrió" y el esquema sigue igual.
+41. **Blanquear la firma no es sacarla, y la regla 18 vuelve en cada objeto firmado nuevo.** El
+    handler de peering canonicalizaba un `PeerRequest` con la firma en cero, que serializa cuatro
+    strings vacíos que ningún firmante produjo. El cliente firmaba un documento y el servidor
+    verificaba otro, así que **todos** los pedidos legítimos daban 401. Lo escribí yo, sabiendo
+    la regla, en la primera función del archivo.
+42. **`go run` compila a un binario temporal y lo ejecuta como HIJO.** El pid que reporta es el
+    del envoltorio: matarlo deja el servicio escuchando. La corrida siguiente encontró el puerto
+    contestando, se salteó su propio arranque y habló con el build anterior — que se ve
+    exactamente igual que un cambio de código que no tuvo efecto. En scripts: compilar y correr
+    el binario.
+43. **Una asignación toma el exit status de su sustitución.** `stale=$(... | grep ...)` bajo
+    `set -e` termina el script cuando grep no encuentra nada — o sea, en el caso normal. El
+    `|| true` va en la asignación, no solo en lo que viene después.
+44. **Un id de fixture dentro del rango de un asignador es una compuerta que se erosiona con el
+    uso.** `invariants.sql` usaba `UAI-INC-000041` y el asignador reparte `UAI-INC-%06d` contando
+    desde uno: la suite empezó a fallar el día que el registro abrió su caso número 41. No fue
+    un cambio de código, fue que el sistema se usó.

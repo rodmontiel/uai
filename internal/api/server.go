@@ -80,7 +80,11 @@ type Server struct {
 	// service runs without transparency: attestations still work and say so in
 	// their response, because a log outage must not force unattested execution.
 	translog *translog.Log
-	now      func() time.Time
+	// federation is this installation's identity as a UAI-AS, or nil when it is
+	// not part of any federation. Nil is the default and the honest one: a
+	// registry that was given no number has not silently joined anything.
+	federation *Federation
+	now        func() time.Time
 }
 
 // Option configures a Server.
@@ -295,6 +299,26 @@ func (s *Server) Routes() http.Handler {
 	// Public and unauthenticated by design: verification must survive being
 	// linked from a public page.
 	mux.Handle("GET /v1/verify/{uaiId}", Chain(http.HandlerFunc(s.verify), CaptureBody))
+
+	// Federation (§UAI-AS). Read-only surfaces are public for the same reason
+	// /verify is: who a registry peers with is not a secret, and a relying party
+	// deciding whether to believe a federated claim needs to see the peering it
+	// came through.
+	mux.Handle("GET /v1/federation/registry", Chain(http.HandlerFunc(s.federationRegistry), CaptureBody))
+	mux.Handle("GET /v1/federation/peers", Chain(http.HandlerFunc(s.federationPeers), CaptureBody))
+	mux.Handle("GET /v1/federation/identities", Chain(http.HandlerFunc(s.federationIdentities), CaptureBody))
+
+	// The two a PEER calls. They are not behind proof of possession because the
+	// caller is another registry, not an agent of this one: what authenticates
+	// them is the signature inside the message, checked against the key recorded
+	// when the peering was configured.
+	mux.Handle("POST /v1/federation/handshake", Chain(http.HandlerFunc(s.federationHandshake), CaptureBody))
+	mux.Handle("POST /v1/federation/announcements", Chain(
+		http.HandlerFunc(s.federationAnnouncement), CaptureBody))
+
+	// The one an OPERATOR calls, and the only federation write this registry's
+	// own key authorizes. See the comment on PeerRequest for why it is not open.
+	mux.Handle("POST /v1/federation/peers", Chain(http.HandlerFunc(s.federationAddPeer), CaptureBody))
 
 	return mux
 }

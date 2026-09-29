@@ -70,16 +70,21 @@ INSERT INTO audit_events (id, actor_did, actor_type, operation, object_kind, obj
 VALUES ('aud-1', 'did:uai:owner:01JY8R9ZB00000000000000000', 'OWNER', 'REGISTER_AGENT',
         'agent', 'ag-1', 'api', 'SUCCESS', 'sig', 'kid');
 
+-- 990041, not 41. The allocator in internal/api/escalate.go hands out
+-- UAI-INC-%06d counting up from one, so a low number is an id the running
+-- system will reach on its own: this suite began failing the day the registry
+-- opened its forty-first case. A fixture id has to be one the allocator can
+-- never produce, or the gate erodes with ordinary use.
 INSERT INTO harm_cases (id, agent_id, owner_id, summary)
-VALUES ('UAI-INC-000041', 'ag-1', 'own-1', 'Access to infrastructure outside declared scope');
+VALUES ('UAI-INC-990041', 'ag-1', 'own-1', 'Access to infrastructure outside declared scope');
 
 INSERT INTO evidence_items (id, case_id, kind, commitment, collected_by, signature, signer_kid)
-VALUES ('evi-1', 'UAI-INC-000041', 'ACTION_ATTESTATION', 'sha256:' || repeat('c', 64),
+VALUES ('evi-1', 'UAI-INC-990041', 'ACTION_ATTESTATION', 'sha256:' || repeat('c', 64),
         'did:uai:delegate:01JY8R9ZC00000000000000000', 'sig', 'kid');
 
 INSERT INTO evidence_items (id, case_id, kind, commitment, salt_ref, vault_ref,
                             collected_by, signature, signer_kid)
-VALUES ('evi-2', 'UAI-INC-000041', 'LOG_EXTRACT', 'sha256:' || repeat('7', 64),
+VALUES ('evi-2', 'UAI-INC-990041', 'LOG_EXTRACT', 'sha256:' || repeat('7', 64),
         'vault://evidence/evi-2/salt', 'vault://evidence/evi-2/object',
         'did:uai:delegate:01JY8R9ZC00000000000000000', 'sig', 'kid');
 
@@ -104,7 +109,7 @@ VALUES ('del-ar', 'uai:delegate:01JY8R9ZD00000000000000000',
 
 INSERT INTO governance_proposals (id, case_id, kind, subject_agent_id, evidence_digest,
                                   policy_version, bundle_hash, threshold_snapshot, state, closes_at)
-VALUES ('prop-1', 'UAI-INC-000041', 'PERMANENT_REVOCATION', 'ag-1', 'sha256:' || repeat('f', 64),
+VALUES ('prop-1', 'UAI-INC-990041', 'PERMANENT_REVOCATION', 'ag-1', 'sha256:' || repeat('f', 64),
         'GASC-2027.4', 'sha256:' || repeat('1', 64), '4-of-5', 'VOTING', now() + interval '7 days');
 
 INSERT INTO votes (id, proposal_id, delegate_id, country_code, value, evidence_digest, vote_digest,
@@ -745,7 +750,7 @@ SELECT assert_fails('QUAR', 'a review date cannot fall after the expiry', $$
 INSERT INTO revocation_decisions (id, proposal_id, case_id, subject_agent_id, tally_yes,
                                   tally_no, tally_pending, threshold_applied, evidence_digest,
                                   governance_proof)
-VALUES ('dec-1', 'prop-1', 'UAI-INC-000041', 'ag-1', 4, 1, 0, '4-of-5',
+VALUES ('dec-1', 'prop-1', 'UAI-INC-990041', 'ag-1', 4, 1, 0, '4-of-5',
         'sha256:' || repeat('e', 64), 'sha256:' || repeat('9', 64));
 
 INSERT INTO revocations (id, decision_id, agent_id, executed_by_did, executor_signature,
@@ -767,7 +772,7 @@ SELECT assert_fails('GOV', 'one governance proof cannot authorize two decisions'
     INSERT INTO revocation_decisions (id, proposal_id, case_id, subject_agent_id, tally_yes,
                                       tally_no, tally_pending, threshold_applied,
                                       evidence_digest, governance_proof)
-    VALUES ('dec-2', 'prop-1', 'UAI-INC-000041', 'ag-1', 4, 1, 0, '4-of-5',
+    VALUES ('dec-2', 'prop-1', 'UAI-INC-990041', 'ag-1', 4, 1, 0, '4-of-5',
             'sha256:' || repeat('e', 64), 'sha256:' || repeat('9', 64))$$);
 
 -- ── one key, one identity ───────────────────────────────────────────────────

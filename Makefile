@@ -301,6 +301,21 @@ walkthrough: ## Step through the 21 criteria against the running stack, pausing 
 		--ca "$$ca" --web "$${UAI_WEB:-http://localhost:8081}" \
 		--verify-bin "$(PWD)/$(DEMO_KEYS)/uai-verify"
 
+# Two independently administered registries, peering and exchanging one signed
+# statement. Two databases and two gateways, because one process talking to
+# itself would demonstrate nothing about autonomy.
+.PHONY: federation-demo
+federation-demo: ## UAS1001 ↔ UAS2001: peer, handshake, announce, and the refusals
+	@./demo/federation.sh
+
+.PHONY: federation-demo-keep
+federation-demo-keep: ## The same, left running so the Federation pages can be read
+	@./demo/federation.sh --keep
+
+.PHONY: federation-demo-down
+federation-demo-down: ## Stop a federation-demo-keep run
+	@./demo/federation.sh --down
+
 .PHONY: demo-down
 demo-down:
 	@test -f $(DEMO_KEYS)/gateway.pid && kill $$(cat $(DEMO_KEYS)/gateway.pid) 2>/dev/null || true

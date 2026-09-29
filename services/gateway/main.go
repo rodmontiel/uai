@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/rodmontiel/uai/internal/pdp"
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/internal/translog"
+	"github.com/rodmontiel/uai/pkg/federation"
 	"github.com/rodmontiel/uai/pkg/spiffe"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
@@ -50,6 +52,18 @@ func main() {
 			"SPIFFE trust domain this registry accepts SVIDs from")
 		tlsCert = flag.String("tls-cert", os.Getenv("UAI_TLS_CERT"), "PEM certificate to serve TLS with")
 		tlsKey  = flag.String("tls-key", os.Getenv("UAI_TLS_KEY"), "PEM private key for -tls-cert")
+
+		// Federation. Absent, this registry has no UAI-AS identity and every
+		// federation route answers 404 -- which is the honest state for an
+		// installation nobody has peered.
+		uaiASN = flag.Uint("uai-asn", uintEnv("UAI_ASN"),
+			"this installation's UAI Autonomous Registry System number")
+		registryName = flag.String("registry-name", os.Getenv("UAI_REGISTRY_NAME"),
+			"this registry's display name")
+		registryKey = flag.String("registry-key", envOr("UAI_REGISTRY_KEY", ".keys/registry.jwk"),
+			"path to the key this registry signs federated statements with")
+		federationEndpoint = flag.String("federation-endpoint", os.Getenv("UAI_FEDERATION_ENDPOINT"),
+			"the URL peers reach this registry's federation routes at")
 	)
 	flag.Parse()
 
@@ -134,6 +148,21 @@ func main() {
 		api.WithBundle(bundle),
 		api.WithTransparency(tlog),
 	}
+	if *uaiASN != 0 {
+		fed, err := loadFederation(ctx, db, federation.ASN(*uaiASN), *registryName,
+			*registryKey, *federationEndpoint)
+		if err != nil {
+			// Refusing to start rather than running without it. An operator who
+			// asked for an ASN and got a registry that quietly is not federated
+			// would find out from a peer's handshake failing.
+			slog.Error("federation misconfigured", "err", err)
+			os.Exit(1)
+		}
+		opts = append(opts, api.WithFederation(fed))
+		slog.Info("federation enabled", "uai_asn", fed.Registry.ASN,
+			"registry_did", fed.Registry.DID, "endpoint", fed.Registry.Endpoint)
+	}
+
 	trust, err := loadTrustBundle(*spireDomain, *spireBundle)
 	if err != nil {
 		slog.Error("runtime attestation misconfigured", "err", err)
@@ -275,4 +304,55 @@ func clientCertConfig(trust *spiffe.Bundle) *tls.Config {
 		return nil
 	}
 	return &tls.Config{ClientAuth: tls.RequestClientCert, MinVersion: tls.VersionTLS12}
+}
+
+// uintEnv reads a positive number from the environment, or 0.
+func uintEnv(key string) uint {
+	n, err := strconv.ParseUint(os.Getenv(key), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint(n)
+}
+
+// loadFederation gives this installation its UAI-AS identity.
+//
+// The private key is loaded from a file and its PUBLIC half is what the database
+// records, exactly as the issuer key is handled. A registry whose signing key
+// lived in the database would have that key in every backup of it, and a peer
+// would have no way to tell a statement the operator signed from one the
+// database's reader forged.
+func loadFederation(ctx context.Context, db *store.DB, asn federation.ASN,
+	name, keyPath, endpoint string) (*api.Federation, error) {
+	if name == "" {
+		return nil, errors.New("a registry needs a name: set UAI_REGISTRY_NAME")
+	}
+	if endpoint == "" {
+		return nil, errors.New("a registry needs the URL its peers reach it at: " +
+			"set UAI_FEDERATION_ENDPOINT")
+	}
+	signer, err := keyfile.Load(keyPath, federation.RegistryDID(asn)+"#key-1")
+	if err != nil {
+		return nil, fmt.Errorf("the registry signing key: %w "+
+			"(create one with: uai-keygen -out %s -did %s)",
+			err, keyPath, federation.RegistryDID(asn))
+	}
+	jwk, err := keyfile.PublicJWK(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	jwk.Kid = federation.RegistryDID(asn) + "#key-1"
+	reg := store.Registry{
+		ASN: asn, DID: federation.RegistryDID(asn), Name: name,
+		PublicJWK: jwk, Endpoint: endpoint, ProtocolVersion: federation.ProtocolVersion,
+		Status: "ACTIVE",
+	}
+	if err := db.SetLocalRegistry(ctx, reg); err != nil {
+		return nil, err
+	}
+	stored, err := db.LocalRegistry(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Federation{Registry: stored, Signer: signer}, nil
 }

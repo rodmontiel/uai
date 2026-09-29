@@ -48,6 +48,7 @@ export function nav(current) {
     ['/explorer.html', 'Explorer'],
     ['/quarantine.html', 'Quarantine'],
     ['/governance.html', 'Governance'],
+    ['/federation.html', 'Federation'],
   ];
   return h('nav', { class: 'nav' },
     h('a', { class: 'brand', href: '/' }, 'UAI'),
