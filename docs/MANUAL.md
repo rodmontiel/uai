@@ -1,245 +1,272 @@
-# User manual
+# Technical manual
 
 > *Also available in Spanish: [`MANUAL.es.md`](MANUAL.es.md).*
 >
-> This document explains UAI **from the ground up**, assuming nothing. It is written for someone
-> who does not program. Technical terms do appear, but always with what they do and what they are
-> like.
+> A reference for UAI's components: which standard each one implements, what it guarantees, where
+> it lives in the repository, and how it fails. For the step-by-step walkthrough with real
+> commands and real output, see [`Ejemplo_Practico_es.md`](Ejemplo_Practico_es.md).
 
 ---
 
-## 1. The problem, in one sentence
+## 1. The problem
 
-An artificial-intelligence program did something. **Who was it, and who answers for it?**
+An autonomous agent performed an action. **Who performed it, and who answers for it?**
 
-Today, in practice, there is no answer. An AI agent that sends an email, moves money or deletes a
-file leaves behind, at best, a line in a log saying `bot-27`. That line was written by the same
-system that took the action. It is a receipt that signed itself.
+The usual trace is a log line emitted by the same process that acted: unsigned, with no reference
+to the policy in force when it decided, and with no way to detect that it was edited afterwards.
+That is not evidence. It is an unverifiable assertion by the interested party.
 
-UAI exists so that question has an answer, and so the answer can be **checked without trusting us**.
+For every action, UAI produces a signed record naming the identity, its declared owner, the
+capability exercised, the purpose, the exact version of the rulebook that authorized it, and the
+outcome — chained to the previous record and verifiable by a third party without running any code
+from this repository.
 
-### What UAI does NOT do
+### Declared limits
 
-This comes first, not last, because it is the easiest thing to misread:
-
-- **UAI does not say an agent is safe.** No protocol can. It says *who it is*, *who answers for
-  it*, *what it was allowed to do* and *what it did*.
-- **UAI has no global kill switch.** It does not exist and cannot exist. Revoking an identity means
-  *everyone else stops accepting it* — not that the program stops. If the agent runs on a
-  disconnected machine, it keeps running. The demo shows this on purpose.
-
-> Analogy: if someone's passport is cancelled, they do not disintegrate. They simply stop being
-> able to cross borders where it gets checked. UAI is the passport system, not the police.
-
----
-
-## 2. The four things UAI gives an agent
-
-| It is called | It is like | What it actually is |
-|---|---|---|
-| **UAI-ID** | A national ID number | A unique, unrepeatable identifier. It says nothing about the holder: it is the number everything else hangs off |
-| **Credential** | A diploma or a licence | A signed document saying whose agent this is and what it was enabled to do |
-| **Passport** | A passport | A permission with an expiry date to act in certain countries. It says **where**, never **what** |
-| **Action attestation** | A notarized receipt | A signed record of each thing it did, chained to the previous one |
-
-The distinction between credential and passport matters and is easy to lose:
-
-- The **credential** says *"this agent may optimize delivery routes"*. That is the **what**, and
-  the owner grants it.
-- The **passport** says *"it may do so in Argentina and Germany, until 3 March"*. That is the
-  **where and until when**.
-
-A passport can never add a capability the owner did not grant. That is why an agent can request one
-itself without that being a self-granted permission.
+- **UAI does not evaluate whether an agent is safe.** It establishes attribution, not harmlessness.
+- **UAI has no global kill switch.** Revoking an identity means participants stop honoring its
+  credentials. The process does not stop: an agent on a disconnected machine keeps running.
+  `make demo` demonstrates this explicitly.
+- **An attestation proves an action was asserted, not that its effects occurred.** Proving effect
+  requires the target system to counter-attest, and that is not implemented.
 
 ---
 
-## 3. What it is made of, piece by piece
+## 2. The four artifacts
 
-Each component below: the technology it uses, what that is for, and what it is like.
+| Artifact | Standard | Wire form | Answers |
+|---|---|---|---|
+| **UAI-ID** | ULID + W3C DID | `uai:agent:01M3QA6…` ↔ `did:uai:agent:01M3QA6…` | *who is this?* |
+| **UAI Credential** | W3C VC 2.0 + Data Integrity | `AgentIdentityCredential`, `AgentOwnershipCredential` | *who answers for it, and what was it enabled to do?* |
+| **UAI Passport** | W3C VC 2.0 | `AgentPassportCredential`, with `validUntil` | *where, and until when?* |
+| **Action Attestation** | Signed JSON, hash-chained | `uai_version`, `sequence`, `previous_event_hash` | *what did it do?* |
 
-### 3.1 Digital signature — *the wax seal*
+The identifier is a ULID: 26 characters in Crockford base32, time-sortable, generated without
+central coordination. The DID derives from it 1:1, so a verifier resolving the DID and one querying
+the UAI-ID are talking about the same entity with no translation table in between.
 
-**Technology: public-key cryptography (Ed25519).**
+**Credential and passport are not interchangeable.** The credential grants the capability
+(`crm.customer.read`) and only the owner signs it. The passport bounds jurisdiction and validity
+(`AR, DE`, until `2027-03-21`) and **cannot add a capability the owner did not grant**. That is why
+an agent may request its own passport without it being a self-granted permission: the worst case of
+a fraudulent passport is narrower scope, never wider.
 
-Every agent generates **two mathematically paired keys**. One it keeps and never shows (the
-*private* one). The other it publishes (the *public* one).
+Each capability also declares an **assurance floor** (`min_assurance`). A passport listing
+`cloud.securitygroup.update` at floor `UAI-AL3` over an identity at `UAI-AL0` enables nothing: the
+guardrail refuses the action with `assurance_below_floor` and names the rule that fired.
 
-What makes the pair special is this: anything sealed with the private key can be checked by anyone
-holding the public one — **but nobody can forge the seal without the private key.**
+---
 
-> Analogy: a wax seal only you own. Everyone recognizes your crest; nobody can carve an identical
-> one.
+## 3. Components
 
-UAI never generates an agent's keys. The agent makes its own, and **we never see the private one**.
-That is deliberate: if we held it, we could sign in the agent's name, and a signature would stop
-proving who acted.
+### 3.1 Signatures — Ed25519
 
-### 3.2 Canonicalization — *agreeing how to write it down, before signing*
+Ed25519 keys (RFC 8032). The private key never leaves the process holding it; in this repository it
+lives in `.keys/`, which is gitignored and never committed.
 
-**Technology: JCS, RFC 8785.**
+What is signed is **the canonicalized document minus its signature member**. The member is
+**removed**, not blanked: an implementation that blanked it would be signing four empty strings no
+other signer adds, and its documents would verify only against itself.
 
-A boring and critical problem: `{"a":1,"b":2}` and `{ "b":2, "a":1 }` say the same thing, but they
-are different text, so they produce different seals. If the signer and the verifier write the
-document even slightly differently, the signature fails to validate — and it looks like fraud when
-it was one extra space.
+Keys are resolved **as they were valid at event time**, not as they are now (`pkg/keys`). A
+signature made before its key was revoked still verifies; one made after does not. Without that
+rule, rotating a key would retroactively invalidate an entire history, and declaring a compromise
+would invalidate nothing.
 
-JCS is a rule that says exactly how to write the document before sealing it: what order the fields
-go in, how many spaces, how numbers are written.
+### 3.2 Canonicalization — JCS, RFC 8785
 
-> Analogy: before signing a contract, both parties agree on the typeface, the paper size and the
-> order of the clauses. It sounds bureaucratic. It is what makes two copies comparable.
+`{"a":1,"b":2}` and `{ "b":2, "a":1 }` are the same object and different bytes, so they produce
+different signatures. JCS fixes member order, number encoding and string escaping so two
+implementations produce the same bytes.
 
-It is implemented **three times** in this repository — in Go, in Python and in TypeScript — and all
-three are tested against the **same reference examples**. That is what keeps three implementations
-from becoming three different protocols.
+Implemented **three times** in this repository — Go, Python, TypeScript — and all three are tested
+against the same vectors in `spec/test-vectors/jcs/`. The vectors are read, never regenerated in
+tests: `make vectors-check` fails if regenerating them would change anything. Without that, three
+implementations become three protocols.
 
-### 3.3 Domain separation — *what this signature is for*
+### 3.3 Domain separation
 
-Every signature carries a label inside saying what it was made for: `UAI-v1:attestation`,
-`UAI-v1:vote`, `UAI-v1:quarantine`.
+What is hashed or signed is not the payload but `DOMAIN || 0x00 || payload`. Domains are constants
+prefixed `UAI-v1:` — `attestation`, `credential`, `vote`, `quarantine`, `revocation`, `checkpoint`,
+`commitment`, `passport`, `federation-hello`, and ten more in `pkg/uaicrypto/digest.go`.
 
-> Analogy: signing a cheque and signing a travel consent form. Same hand, but you do not want
-> anyone cutting your signature off one and pasting it onto the other.
+Without separation, a signature produced to report a suspicion (`UAI-v1:suspicion`) could be
+presented as the quarantine order that follows it (`UAI-v1:quarantine`), because the payload names
+the same subject. Reusing an existing domain for a new purpose is a security bug, not a shortcut.
 
-Without that label, a signature made to report a suspicion could be reused as the quarantine order
-that follows it.
+### 3.4 The event chain
 
-### 3.4 The event chain — *the numbered pages of a notebook*
+Every event for an agent — registration, bind, unbind, rebind, action — carries the hash of the
+previous one and a monotonic `sequence`. The hash covers the **signed** event, not just its
+payload, so the chain binds the signature and not merely the content.
 
-Every action an agent takes is stored with the **digest of the previous action** inside it.
+A gap in the numbering or a dangling link is visible to anyone walking the history. And a **forked**
+chain — two different events declaring the same predecessor — has no innocent explanation: it is
+the signal that the identity is running in two places at once.
 
-> Analogy: a notebook where each page writes the summary of the previous page at the top. If
-> someone tears a page out, the next one no longer adds up. Nothing can be deleted quietly.
+### 3.5 Transparency log — Merkle, RFC 6962
 
-If the same agent shows up running in two places at once, the chain forks — and a forked chain
-**has no innocent explanation**. It is the signal that somebody cloned the identity.
+Every attestation is entered into a Merkle tree and returns a **receipt**: leaf index, inclusion
+proof, signed checkpoint and witness co-signatures. A third party holding the statement, the
+receipt and the anchors verifies all of it without asking anyone.
 
-### 3.5 The transparency log — *the public minute book*
+The log stores **leaf hashes, never statements**. A log that accumulated content would become the
+single thing worth attacking, and its retention would stop being cheap and lawful the moment it
+held anything about a person.
 
-**Technology: Merkle tree (RFC 6962), the same thing internet certificates use.**
+### 3.6 Witnesses
 
-Everything recorded goes into a structure that allows two remarkable things:
+The tree does not detect **split view**: an operator can show two consistent histories to two
+different verifiers. The defence is organizational, not cryptographic.
 
-1. Proving that **something is inside**, without showing everything else.
-2. Proving the book **only grew**, that no old page was ever rewritten.
+A witness co-signs a checkpoint only after checking that it **extends** the one it already signed.
+To sustain two histories, the operator would need witness signatures for two inconsistent
+checkpoints, and an honest witness cannot produce the second.
 
-> Analogy: a minute book where every page carries a number derived from all the pages before it.
-> Changing one comma on page 3 changes the number on the last page, and everyone sees it.
+> Today both witnesses run on the same machine. That provides **the mechanism but not the
+> independence**: split-view detection rests on witnesses being operated by parties who would not
+> collude with the log, and two processes on one host are not that. Declared, not hidden.
 
-**The log does not store the content.** It stores only a fingerprint. If somebody steals the log's
-database, they get neither a prompt nor a piece of personal data.
+### 3.7 Chain anchoring
 
-### 3.6 Witnesses — *signing the same book from another office*
+Periodically the checkpoint root is published to a consortium ledger (`uai-ledger-writer`, a
+process separate from the gateway: anchoring is a durability layer, not an admission gate — the
+gateway must keep accepting attestations while the ledger is down).
 
-A minute book has a problem: what if whoever keeps it shows one version to you and a different one
-to somebody else? That is called a *split view*, and cryptography alone does not catch it.
+**No content reaches the chain, only salted commitments.** `test/onchain` reads the committed ABIs
+and rejects any parameter that is not `bytes32`, `uintN`, `intN`, `bool`, `address` or a tuple of
+those. A `string` or a dynamic `bytes` could carry a prompt or an email address, and the only
+reliable way to keep those off a chain is to make them **unspellable** — which is why INV-007/008
+is a build gate rather than a code-review habit.
 
-The answer is not technical but organizational: **other parties sign the same book**. For the log to
-show two histories, it would have to get the witnesses to sign both.
+The salt is mandatory: 32 bytes from `crypto/rand`, a fresh one per commitment. A bare hash of
+low-entropy content — an email, an amount, a yes/no — is recoverable by dictionary attack, and a
+commitment published on chain is a permanent privacy mistake. The salt stays with the owner: UAI
+does not hold it and never will, which means a commitment whose salt was lost can never be opened.
 
-> Analogy: two notaries from different firms sign the same minute. Forging it stops being one
-> person's problem and becomes a conspiracy.
+The public anchor adapter ships as `noop-dev`, which **returns an error rather than a plausible
+transaction hash**. A development build that invented an anchor would make receipts claim a
+durability nobody provided.
 
-In this repository today the witnesses run on the same machine, and **that does not count as
-independence**. It is written down as pending, not hidden.
+### 3.8 Guardrail — OPA / Rego
 
-### 3.7 Blockchain anchoring — *nailing the book up in the town square*
+Before acting, the agent asks the PDP, which evaluates a **signed policy bundle**
+(`policy/gasc-2027.4/`). The bundle is committed with its manifest and signatures; the private
+approval keys are not. Editing a rule or a threshold breaks startup until somebody holding the
+governance keys signs again: policy is not changed by whoever has write access to the source tree.
 
-Every so often, the fingerprint of the minute book is published on a blockchain.
+**Verifying a bundle and evaluating one are deliberately separate.** Evaluation costs 33
+third-party modules and lives only in the PDP; verification — manifest, hash, M-of-N signatures,
+version chain — is dependency-free, because **auditing a past decision must never require the
+machinery that made it** ([ADR-0002](adr/0002-opa-embedded-in-the-pdp.md)).
 
-> Analogy: posting a note on the courthouse door saying "at 15:00 the minute book was on page 4,812
-> and its fingerprint was this". If somebody later rewrites the book, the note on the door
-> contradicts it.
+**Every** decision is recorded, `ALLOW` included, and every record names the exact bundle version
+and hash. A guardrail that only logs denials cannot answer *"what was permitted, and why?"*, which
+is the question that matters after an incident.
 
-**No content goes on the chain**, only salted fingerprints. That is guaranteed by an automated test
-that rejects any contract declaring a parameter capable of carrying text.
+### 3.9 Governance — WebAuthn
 
-> The "salted" part matters: the fingerprint of a guessable value (an email address, say) can be
-> recovered by trying a dictionary. Adding a secret random value before computing it makes that
-> infeasible.
+Permanently revoking an identity requires **4 votes from 5 delegates, from at least 3 distinct
+jurisdictions**.
 
-### 3.8 The guardrail — *the rulebook, and whoever applies it*
+The central design detail: **the challenge the hardware key signs IS the digest of the vote**. It
+is not authenticate-then-vote; the authenticator signs exactly the content being voted on, with
+`userVerification` required.
 
-**Technology: OPA / Rego, a policy engine.**
+The consequence: **no automated process can vote.** It may hold the delegate's credential and still
+not produce a valid vote, because the authenticator demands a verified human present. The registry
+refuses it with `UAI_VOTE_NOT_USER_VERIFIED`.
 
-Before each action, the agent asks: *"may I do this?"*. What answers is a policy engine consulting a
-**signed rulebook**.
+The administrator is read-only by construction. The only thing it can do with a revocation is
+**execute** one already decided, and `UAIRevocationRegistry.executeRevocation` re-verifies the
+delegate signatures and the quorum against `UAIPolicyRegistry` before accepting it. A compromised
+administrator revokes nobody. The quorum is not a constant in the contract: it is read from policy,
+so governance changes it by signing rather than by redeploying the code that enforces it.
 
-The rulebook is not a file anyone can edit: it is signed by several independent custodians, and the
-engine **refuses to load it** if the signatures do not check out. Editing a rule without re-signing
-breaks startup.
+### 3.10 Runtime attestation — SPIFFE/SPIRE
 
-> Analogy: a club's rulebook, signed by three board members. The doorman does not enforce it because
-> it is printed: he enforces it because he recognizes the signatures.
+A self-declared binding is the agent asserting where it runs, signed by the agent. It is worth the
+same as nothing, and the system records it as `self-declared` so the two are distinguishable.
 
-And every decision it makes is recorded **with the exact version of the rulebook** used. Without
-that, reviewing a decision from two years ago would be impossible: nobody would know which rules it
-was taken against.
+SPIRE observes the process from outside — operating-system selectors, today `unix:uid:N` — and
+issues an **X509-SVID**: a certificate whose only URI SAN is a SPIFFE identity. The registry reads
+the runtime **from the certificate, never from the request body**, and checks that the SVID names
+*that* identity: a perfectly valid certificate belonging to another agent is refused with
+`UAI_RUNTIME_IDENTITY_MISMATCH`.
 
-### 3.9 Governance — *revoking takes people, not software*
+The binding **expires with the SVID that proved it** (`expires_at` is the certificate's own
+`NotAfter`, not a constant), and expired evidence does not count. The runtime dimension is not a
+permanent achievement: it is a live state that has to be renewed.
 
-Permanently revoking an identity takes **4 votes out of 5 delegates, from at least 3 different
-countries**.
+> **What is still not recorded:** `runtime_identities.selectors` exists and is always empty. The
+> registry stores the SPIFFE ID the attestor issued — a **name** — and not the evidence behind it,
+> so nothing distinguishes an identity attested on `unix:uid` (any process of that user) from one
+> attested on an image digest. It is in [§20.5](protocol/13-threat-model.md) with its consequence.
 
-**Technology: WebAuthn**, the same standard behind physical security keys and phone fingerprint
-readers.
+### 3.11 Assurance level
 
-There is a design detail here that is the heart of the system: **the challenge the physical key
-signs IS the digest of the vote**. It is not "log in and then vote". The device signs exactly *the
-content of what is being voted on*.
+An identity's level (`UAI-AL0`…`UAI-AL3`) is the **minimum** of three dimensions:
 
-> Analogy: instead of showing ID at the door and then signing whatever paper is inside, the pen only
-> writes when you press your finger **on that specific sheet**.
+| Dimension | AL1 | AL2 | AL3 |
+|---|---|---|---|
+| Key protection | software | TPM2, secure enclave, KMS, WebAuthn | HSM |
+| Owner verification | domain control | verified organization credential | verified legal entity |
+| Runtime attestation | attested SVID | SVID + attestor-supplied image digest | remote attestation of the environment |
 
-The practical consequence: **no program can vote.** An automated process can hold a delegate's
-credential and still cannot produce a valid vote, because the device demands verification of a
-human who is present. The system refuses it with an error that says so in as many words.
+It is **derived from evidence on every read, never stored**: a stored copy would be a cache with no
+invalidation path, and the evidence changes when a key rotates, a binding expires or an owner is
+verified. The registry also says **which dimension is the ceiling**, because a bare `UAI-AL0` is
+indistinguishable from a misconfiguration.
 
-> The system administrator is read-only by construction. The only thing they can do with a
-> revocation is execute one that was already decided, and the contract re-verifies the delegates'
-> signatures before accepting it. A compromised administrator cannot revoke anybody.
+> Owner verification is currently pinned at `SELF_ASSERTED`: nothing in the schema records domain
+> control. That is why **every identity is at AL0**, even one with an HSM key and an attested
+> runtime. The `did:web` control proof is listed as missing in §20.5.
 
-### 3.10 Runtime attestation — *the building issues the badge, not you*
+### 3.12 SDKs
 
-**Technology: SPIFFE/SPIRE.**
+Three SDKs (Go, Python, TypeScript) and an MCP server with the 8 tools of §22.9.
 
-Until recently, when an agent connected and said *"I am running in this place, as this program"*,
-the system believed it. It was signed... **by the agent itself**. It is a form you fill in about
-yourself.
-
-SPIRE changes that. It is a service that looks at the process **from outside** — it asks the
-operating system who is running it, from which file, as which user — and only then hands over a
-short-lived certificate.
-
-> Analogy: the difference between writing your name on a list as you walk into a building, and
-> reception taking your photo, checking your ID and printing you a badge with an expiry time. You
-> cannot forge the second one alone.
-
-What this blocks, concretely: an agent holding a **perfectly valid** certificate can no longer use
-it to pass as somebody else. The system checks that the certificate *names that identity*, and
-refuses it otherwise.
-
-### 3.11 The SDK — *the plug*
-
-An SDK is the piece a developer drops into their program to talk to UAI. There are three (Python,
-TypeScript, Go) and an MCP server for agents using that standard.
-
-The design starts from an uncomfortable admission: **an SDK cannot force an agent to be
-accountable**, because it runs inside the agent itself. The only thing you can do is make the
-honest path the easy one. Hence this shape:
+The design starts from a limit that cannot be engineered away: **an SDK cannot make an agent
+accountable**, because it runs inside the agent. The only thing available is to make the honest
+path the shortest one:
 
 ```python
 with agent.action("send the quote to the customer") as act:
     result = do_the_work()
 ```
 
-Consulting the policy, recording the outcome and signing it happen **on their own**, even if the
-work fails. There is nothing to remember. A design where you had to call "record" at the end would
-be a design where the actions that go wrong do not get recorded.
+Consulting policy, attesting the outcome and signing it happen on their own, **even if the work
+raises**: `FAILURE` is attested and the exception re-thrown. A design where you had to call a
+method at the end would be a design where the actions that go wrong do not get recorded — and an
+accountability record containing only successes is an advertisement.
 
----
+No MCP tool grants capabilities. `uai_request_capability` opens a request that **the owner**
+approves out of band; the agent cannot approve anything for itself.
 
+### 3.13 Federation — UAI-AS
+
+An installation with a number of its own (`UAI_ASN`) is a **UAI-AS**: it has a registry DID
+(`did:uai-registry:1001`), its own key — distinct from the issuer's — and answers *who is this
+registry?*.
+
+Two registries configure each other **by hand**, greet with a signed `REGISTRY_HELLO`, and exchange
+an `IDENTITY_ANNOUNCEMENT` about an identity **the origin issued**.
+
+> **PEER TRUST ≠ AGENT TRUST.** Configuring a peer means *"this registry may send me signed
+> statements"*. It never means *"I trust its agents"*.
+
+Held up by the schema, not by a comment: `federated_identities` has **no foreign key** to `agents`,
+and a CHECK ties every DID to the ASN it is stored under. A valid signature is not authority — a
+registry can perfectly well sign an announcement about another's agent, and it is refused with
+`WRONG_AUTHORITY`.
+
+An announcement has seven fields, none free-form, and the decoder **rejects unknown members**. That
+is how *"announcements must never carry prompts or PII"* stops being a rule in a document.
+
+What does **not** exist — transit, `REGISTRY_PATH`, routing, automatic discovery, revocation
+propagation, passport federation — is enumerated in
+[`Ejemplo_Practico_federation_es.md`](Ejemplo_Practico_federation_es.md). Federation is opt-in and
+off by default: an installation with no number answers `404 UAI_FEDERATION_NOT_CONFIGURED`.
 ## 4. How do I try it
 
 ### What you need installed
@@ -441,7 +468,7 @@ Against a TLS gateway, leaving the CA out is not a smaller version of the same c
 then has nothing to verify the gateway against, and the request fails before any of this is
 reached. `-ca` is how you say which SPIRE you trust — not a switch that turns checking off.
 
-### The five surfaces
+### The surfaces
 
 | Address | What it is | What to look at |
 |---|---|---|
@@ -451,6 +478,7 @@ reached. `-ca` is how you say which SPIRE you trust — not a switch that turns 
 | `http://localhost:8081/quarantine.html` | Quarantines | Agents under preventive restriction, and what was suspended |
 | `http://localhost:8081/governance.html` | Governance | Revocation proposals, who voted what, and under which threshold |
 | `http://localhost:8081/agent.html?id=…` | Agent card | Everything public about one identity |
+| `http://localhost:8081/federation.html` | Federation | This registry, its peers, and the identities others announced. `404 UAI_FEDERATION_NOT_CONFIGURED` when the installation has no number |
 
 > The verify page is the only screen in the system you **do not have to take anyone's word for**. The
 > code that checks the signatures runs in your browser and can be read: a few hundred lines with no
@@ -539,8 +567,9 @@ credibility exactly once.
 ### Finished and tested
 
 Identity, credentials, passports, action attestation, cryptography and reference vectors, the
-guardrail with its signed rulebook, contracts and anchoring, the five surfaces, three SDKs and an
-MCP server, the 21-criteria demo, the security gates, and runtime attestation with SPIRE.
+guardrail with its signed rulebook, contracts and anchoring, the seven pages, three SDKs and an
+MCP server, the 21-criteria demo, the security gates, runtime attestation with SPIRE, and the first
+federation step (registry identity, explicit peering, and one signed announcement between peers).
 
 ### What is missing, and what that means
 
@@ -553,13 +582,9 @@ MCP server, the 21-criteria demo, the security gates, and runtime attestation wi
 | **Counter-attestation** | An agent that only records the flattering actions leaves visible gaps, but nobody looks at them |
 | **Cross-installation clone detection** | Detectable in principle, and detected by nobody |
 
-**The direct, honest consequence:** the assurance level is the **minimum** across three dimensions —
-how the key is held, how the owner was verified, and how the runtime was certified. Since owner
-verification does not exist yet, **every identity sits at the lowest level (AL0)**, even one with a
-hardware key and a certified runtime.
-
-The system does not just state the level: it states **which dimension is holding it down**. Querying
-a registered agent, the response carries these three fields:
+**The direct consequence:** since owner verification does not exist (§3.11), **every identity sits
+at AL0**, even one with an HSM key and an attested runtime. The registry does not just state the
+level: it states which dimension is the ceiling.
 
 ```json
 "assurance_level":      "UAI-AL0",

@@ -2,64 +2,390 @@
 
 > **Every AI agent should be accountable.**
 >
-> A universal identity and accountability layer for autonomous artificial intelligence.
+> An identity and accountability layer for autonomous artificial intelligence —
+> open protocol, reference implementation, and a path to a federated network of
+> independently operated registries.
 
-UAI is an **open protocol** (and a reference implementation) that gives autonomous AI agents a
-portable, cryptographically verifiable identity, and gives everyone else a way to attribute
-actions to that identity.
+---
 
-Four artifacts, named so that they explain themselves:
+## Mission
 
-| Artifact | Analogy | What it is |
-|---|---|---|
-| **UAI-ID** | national ID number | Globally unique, time-sortable identifier, 1:1 with a W3C DID |
-| **UAI Credential** | digital certificate | Verifiable Credential binding the identity to an owner, capabilities and metadata |
-| **UAI Passport** | passport | Time-bounded authorization to act across jurisdictions |
-| **UAI Action Attestation** | notarized receipt | Signed, hash-chained record of what an identity did, under which policy version |
+**Make every action taken by an autonomous agent attributable to a named, responsible party —
+and make that attribution checkable by anyone, without trusting the party that produced it.**
+
+An AI agent sends an email, moves money, changes a firewall rule, reads a customer record. Today
+the trace it leaves is, at best, a line in somebody's log saying `bot-27` — written by the same
+system that took the action. A receipt that signed itself.
+
+UAI replaces that with a chain of signed, independently verifiable evidence: *this identity, this
+declared owner, these granted capabilities, this stated purpose, this exact version of the
+rulebook, this outcome* — and the cryptographic material for a third party to check every link
+without running our code.
+
+## Vision
+
+**One registry is a product. A network of them is infrastructure.**
+
+The internet does not have a central authority deciding who may route packets. It has roughly
+75,000 independently operated Autonomous Systems, each with its own number, each peering with
+others bilaterally, each responsible for what it originates. That design is why the internet
+scales across jurisdictions, competitors and political boundaries.
+
+UAI is built toward the same shape for agent identity. An organization, a regulator, a cloud
+provider or a country runs **its own registry** — a **UAI-AS** — with its own number, its own key
+and its own operational policy. Registries peer with each other explicitly. Signed statements
+about identities travel between peers, always attributable to the registry that originated them.
+Nobody's database becomes anybody else's.
+
+The long-term goal is **global auditability**: an action taken by an agent registered in Buenos
+Aires can be verified by a counterparty in Frankfurt, against evidence neither of them had to
+take on trust.
+
+> **Where this actually is today:** the first three capabilities of that vision exist and run —
+> a registry has its own identity, two registries peer explicitly, and one sends the other a
+> signed statement about an identity it issued. Everything that makes it a *network* rather than
+> a *link* — transit, path propagation, route selection, discovery — **does not exist yet** and
+> is listed as such in [Federation](#federation-the-network-this-is-built-toward).
+
+<sub><i>Long-term stretch goal: if Skynet ever does become self-aware and wake up, at least the
+audit trail will say which owner registered it, under which policy version it acted, whether its
+passport had expired, and exactly which rule it fired on the way. We still will not have a kill
+switch — but the incident report is going to be immaculate. 🤖</i></sub>
+
+---
 
 ## What UAI claims — and what it does not
 
-UAI **does not** claim an agent is safe. No protocol can. It claims that an action is
-attributable: *this identity, this declared owner, these enabled capabilities, this declared
-purpose, this exact guardrail version, and this cryptographic evidence.*
+This goes first, not last, because it is the part most easily oversold.
 
-UAI has **no global kill switch**, and says so in the specification, the API responses, the UI
-and the demo. Revocation means participating organizations will no longer honor an identity's
-credentials. Code on a disconnected machine keeps running. Designing around that limit is what
-makes the rest credible.
+UAI **does not** claim an agent is safe. No protocol can. It claims an action is *attributable*.
+
+UAI has **no global kill switch**, and says so in the specification, the API responses, the UI and
+the demo. Revoking an identity means participating organizations stop honoring its credentials —
+**not** that the program stops. Code on a disconnected machine keeps running. The demo
+demonstrates that limit on purpose rather than hiding it.
 
 > `identified` ≠ `safe`. Identity enables accountability. Accountability is what trust is built on.
+
+---
+
+## The product, in four artifacts
+
+| Artifact | What it answers | What it is |
+|---|---|---|
+| **UAI-ID** | *Who is this?* | A globally unique, time-sortable identifier, 1:1 with a W3C DID |
+| **UAI Credential** | *Who answers for it, and what may it do?* | A Verifiable Credential binding the identity to an owner, an organization and its capabilities |
+| **UAI Passport** | *Where, and until when?* | A time-bounded authorization to act across jurisdictions — never a grant of new capability |
+| **UAI Action Attestation** | *What did it do?* | A signed, hash-chained record of each action, naming the exact policy version that allowed it |
+
+The distinction between the last two is the one worth keeping:
+
+- The **credential** says *"this agent may read customer records."* That is the **what**, and only
+  the owner grants it.
+- The **passport** says *"it may do so in Argentina and Germany, until 21 March."* That is the
+  **where and until when**.
+
+A passport can never add a capability the owner did not grant. That is what makes it safe for an
+agent to request its own.
+
+---
+
+## The screens
+
+Seven pages, one origin, a strict CSP, no build step and no external JavaScript. Values below are
+from a real run of `make demo` and the walkthrough in
+[`docs/Ejemplo_Practico_es.md`](docs/Ejemplo_Practico_es.md).
+
+### 1 · Identification — who is this, and how sure are we?
+
+`http://localhost:8081/verify.html` is the only screen in the system you are **not** asked to
+trust. It does not render our verdict: the code that checks the signatures runs in your browser,
+has no dependencies, and can be read in a few hundred lines.
+
+```
+┌─ Verify — UAI ───────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Verify an identity                                                          │
+│  ┌────────────────────────────────────────────────────┐ ┌────────┐           │
+│  │ uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB               │ │ Verify │           │
+│  └────────────────────────────────────────────────────┘ └────────┘           │
+│                                                                              │
+│  What the registry reports                                                   │
+│    Identity    uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                          │
+│    Status      UAI_VERIFIED              ● not revoked · not quarantined     │
+│    Assurance   UAI-AL0                                                       │
+│                ⓘ limited by owner verification — the owner is self-asserted;  │
+│                  nothing has demonstrated control of its DID                 │
+│    Policy      GASC-2027.4                                                   │
+│    As of       2026-09-30T15:17:09Z            cache 60s                     │
+│                                                                              │
+│  Checked in your browser                                                     │
+│    ✓ DID document resolves 1 verification method, with validity windows      │
+│    ✓ Chain links unbroken — 2 events, each naming its predecessor            │
+│    ✓ Checkpoint signed by the log key, co-signed by 2 of 2 witnesses         │
+│    ✓ Attestation signatures verify against the key valid at signing time     │
+│                                                                              │
+│  This says the record is internally consistent and signed by the keys it      │
+│  names — not that the actions described in it had the effects they claim.     │
+│                                                                              │
+│                                              Open the full timeline →         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**The assurance line is the product decision worth defending.** A bare `UAI-AL0` is
+indistinguishable from a misconfiguration. UAI derives the level from evidence on every read —
+key protection, owner verification, runtime attestation, and the level is the **minimum** of the
+three — and then says which dimension is the ceiling, so the reader knows what would have to
+change.
+
+### 2 · The AI Passport — where it may act, and until when
+
+```
+┌─ Agent — UAI ────────────────────────────────────────────────────────────────┐
+│  MiPrimerAgente                                      ● ACTIVE   UAI-AL0      │
+│                                                                              │
+│  UAI-ID        uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                          │
+│  DID           did:uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                      │
+│  Type          autonomous_task_agent          Version      1.0.0             │
+│  Jurisdiction  AR                             Registered   2026-09-29        │
+│  Policy        GASC-2027.4                    Genesis      sha256:5aec492c…   │
+│                                                                              │
+│  ── Passport  urn:uai:passport:01JY8RB1Q4X7N2M8V0K3T5S9WE ──────── VALID ──   │
+│                                                                              │
+│   Allowed        AR · BR · DE · ES                                           │
+│   Restricted     KP · IR                                                     │
+│   Valid          2026-09-22  →  2027-03-21                                   │
+│                                                                              │
+│   Authorized capabilities            floor        constraints                │
+│     cloud.securitygroup.update       UAI-AL3      max 20 actions/hour        │
+│     crm.customer.read                UAI-AL2                                 │
+│                                                                              │
+│   Decision   01JY8RA3C0…   under GASC-2027.4 · sha256:aaaaaaaa…              │
+│                                                                              │
+│  A passport scopes WHERE a granted capability may be used. It cannot grant    │
+│  one. Each capability still carries its own assurance floor.                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Note the floors: this passport lists `cloud.securitygroup.update` at **UAI-AL3** while the identity
+is at **UAI-AL0**. Holding the passport changes nothing about that — the guardrail refuses the
+action, and the refusal names the rule that fired. A document that authorized something the
+guardrail would deny is a document that tells an operator they are covered when they are not.
+
+### 3 · The event chain — what it did, in order, with no gaps
+
+Every action is a signed record naming the previous one. You cannot insert one, and you cannot
+remove one without the numbering failing to close.
+
+```
+┌─ Explorer — UAI ─────────────────────────────────────────────────────────────┐
+│  Action explorer                                                             │
+│                                                                              │
+│  Identity   uai:agent:01JY8R9ZAF392N7QX2T81JH6KM       ● ACTIVE              │
+│  Genesis    sha256:aaaaaaaa…                                                 │
+│                                                                              │
+│  #    Action                          Outcome              Asserted at       │
+│  ───────────────────────────────────────────────────────────────────────     │
+│  418  infrastructure.modify           SUCCESS              14:02:04.117Z     │
+│       cloud.securitygroup.update      risk CRITICAL                          │
+│       purpose  incident_remediation                                          │
+│       where    AR → DE   cross-border, basis: resource_location              │
+│       policy   GASC-2027.4 · ALLOW_WITH_MONITORING                           │
+│               rules fired: gasc.infra.cross_border_change                    │
+│       passport required · VALID at decision time                             │
+│       links to sha256:aaaaaaaa…                                              │
+│                                                                              │
+│  417  crm.customer.read               ABORTED_BY_POLICY    13:58:41.002Z     │
+│       policy   GASC-2027.4 · DENY   assurance_below_floor                    │
+│               rules fired: gasc.capability.assurance_floor                   │
+│       links to sha256:99c1e70b…                                              │
+│                                                                              │
+│  Inputs and outputs are salted commitments. The text never leaves the agent;  │
+│  the salts stay with its owner, who decides who may open them and when.       │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Failures are attested too. An accountability record containing only successes is an
+advertisement, so `FAILURE`, `PARTIAL` and `ABORTED_BY_POLICY` are first-class outcomes and the
+SDK attests a thrown exception before re-throwing it.
+
+### 4 · Governance — revoking an identity takes people, not an administrator
+
+```
+┌─ Governance — UAI ───────────────────────────────────────────────────────────┐
+│  Proposal   REVOKE  uai:agent:01JY8R9ZAF392N7QX2T81JH6KM                     │
+│  Subject    repeated cross-border transfers after a passport lapsed          │
+│                                                                              │
+│  Threshold  4-of-5, from at least 3 independent jurisdictions                │
+│  Yes / No   4 / 1                                       Closes  in 19h       │
+│  Countries  AR · DE · JP · US                                                │
+│                                                                              │
+│  How a vote is cast                                                          │
+│    Each vote is a WebAuthn assertion with user verification — a human, on a   │
+│    hardware key, present at that moment. An automated process cannot cast     │
+│    one, and the database refuses it if it tries.                             │
+│                                                                              │
+│  Every vote is permanently attributed. There is no anonymous governance here. │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+An administrator may *submit* a revocation. An administrator may never *decide* one. The
+separation is enforced in the schema, not in a code review.
+
+---
+
+## Federation: the network this is built toward
+
+### The idea
+
+BGP works because no one owns it. Each Autonomous System has a number, decides for itself who to
+peer with, and is accountable for the routes it originates. There is no global registry operator,
+and that is precisely why it spans jurisdictions that agree on very little else.
+
+Agent identity needs the same property. A single global registry of AI agents would be a single
+point of political failure, a single subpoena target and a single outage. What the world needs
+instead is **many registries that can recognize each other's statements without merging their
+databases**.
+
+In UAI, an installation with a number of its own is a **UAI-AS**:
+
+| BGP | UAI |
+|---|---|
+| ASN — a number identifying an autonomous network | **UAI-ASN** — a number identifying an autonomous registry |
+| `AS15169` | `did:uai-registry:1001` |
+| Peering session between two ASes | Explicit, mutually configured peering between two registries |
+| BGP OPEN | Signed `REGISTRY_HELLO` |
+| UPDATE announcing a prefix | Signed `IDENTITY_ANNOUNCEMENT` about an identity |
+| *"I originate this prefix"* | *"I issued this identity, and here is its state"* |
+
+UAI-ASNs are independent of internet ASNs. An organization that already runs `AS64500` does not
+inherit a UAI number, and never should: routing packets and vouching for an AI agent are different
+authorities.
+
+### What exists today
+
+Running `make federation-demo` stands up **two registries with separate databases and separate
+gateways** — because a process talking to itself proves nothing about autonomy — and exercises the
+whole path:
+
+```
+==> step 1 — each registry says who it is
+  A   UAI-AS 1001 · OMniLeads-UAI · did:uai-registry:1001 · ACTIVE
+  B   UAI-AS 2001 · Partner-UAI   · did:uai-registry:2001 · ACTIVE
+
+==> step 3 — handshake
+  A   sent REGISTRY_HELLO from AS1001 · answered from AS2001 (Partner-UAI)
+    ✓ PEER ACTIVE in both directions
+
+==> step 5 — AS1001 announces an identity it issued
+  A   announced  did:uai:1001:agent:01M3SGKV0D1MZV4C0DDWVESR45  →  ACCEPTED
+
+==> step 7 — what AS2001 now holds
+  B   AGENT DID                          ORIGIN   STATUS       SIGNATURE
+  B   did:uai:1001:agent:01M3SGKV0D…     AS1001   REGISTERED   VERIFIED
+  B   These belong to other registries. None of them is an agent of this one.
+
+==> and what AS2001 refuses
+    ✓ a replayed announcement: STALE_SEQUENCE
+    ✓ AS2001 trying to revoke AS1001's identity: WRONG_AUTHORITY
+    ✓ AS2001 has 0 local agents: a federated identity is not one
+```
+
+The rule the whole design rests on:
+
+> ### PEER TRUST ≠ AGENT TRUST
+>
+> Configuring a peer means *"this registry may send me signed statements."* It never means
+> *"I trust its agents."* A federated identity is a **claim by another registry**, recorded as
+> such, and it is never an identity of yours.
+
+That is enforced in the schema, not in a comment: federated identities live in their own table
+with **no foreign key** to local agents, and a CHECK ties every DID to the ASN it was announced
+under. And a valid signature is not authority — a registry can perfectly well sign a statement
+about somebody else's agent, and it is refused with `WRONG_AUTHORITY`.
+
+An announcement has seven fields, none of them free-form, and the decoder **rejects unknown
+members**. That is how *"announcements must never carry prompts or PII"* stops being a rule in a
+document.
+
+### What does not exist yet
+
+Named here so it cannot be mistaken for a roadmap that already shipped. None of the following is
+implemented:
+
+- **REGISTRY_PATH and transit** — an announcement travels one hop, between two directly
+  configured peers. Nothing forwards it onward, and nothing records the path it took.
+- **BGP-style route selection, multi-path, and tie-breaking** between competing statements.
+- **Automatic peer discovery** — peering is manual and mutual, on purpose. Trust-on-first-use is
+  offered for a lab and the tool says out loud that out-of-band is better.
+- **An RPKI equivalent** — nothing outside the two registries certifies that a UAI-ASN belongs to
+  who claims it.
+- **Confederations, route reflectors, trust communities, import/export policy engines.**
+- **Propagation of revocation or quarantine** between peers.
+- **Passport federation** and cross-registry capability recognition.
+- **A looking glass**, and federation consensus on a blockchain.
+
+The interfaces were left extensible. Nothing above is scheduled, and nothing above is implied by
+what runs today.
+
+📖 Step by step, with real output: [`docs/Ejemplo_Practico_federation_es.md`](docs/Ejemplo_Practico_federation_es.md)
+
+```
+┌─ Federation — UAI ───────────────────────────────────────────────────────────┐
+│  This registry                                                               │
+│    UAI-AS              1001                                                  │
+│    Registry            OMniLeads-UAI                                         │
+│    Registry DID        did:uai-registry:1001            ● ACTIVE             │
+│    Federation endpoint https://uai.omnileads.example                         │
+│    Protocol            0.1                                                   │
+│                                                                              │
+│  Peers                                                                       │
+│    UAI-AS   REGISTRY DID                 STATUS    ENDPOINT                  │
+│    2001     did:uai-registry:2001        ACTIVE    https://partner.example   │
+│                                                                              │
+│  Federated identities                                                        │
+│    AGENT DID                         ORIGIN   STATUS       SIGNATURE         │
+│    did:uai:2001:agent:01M3SGKV0D…    AS2001   REGISTERED   VERIFIED          │
+│                                                                              │
+│    These belong to other registries. None of them is an agent of this one.   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Federation is **opt-in and off by default**. An installation nobody gave a number to answers
+`404 UAI_FEDERATION_NOT_CONFIGURED`, which is the honest state for a registry that has not joined
+anything.
+
+---
 
 ## Run it
 
 ```bash
-./deploy.sh up      # four containers; `podman ps` shows them
+./deploy.sh up          # four containers; open http://localhost:8081
+./deploy.sh status      # what is running, and whether runtime attestation is on
+./deploy.sh down        # stop
 ```
 
-Then open **http://localhost:8081**. `./deploy.sh down` stops it, `./deploy.sh status` says what is
-running. To see the whole protocol exercised end to end instead, `make demo` stands up a throwaway
-stack, runs the ACME scenario and fails if any of the 21 MVP criteria is not demonstrated.
+To watch the whole protocol exercised end to end instead:
 
-## New here?
+```bash
+make demo               # throwaway stack, the ACME scenario,
+                        # fails unless all 21 MVP criteria are demonstrated
+make federation-demo    # two independent registries recognising each other
+```
 
-[**`docs/MANUAL.md`**](docs/MANUAL.md) explains the whole system from the ground up for readers who
-do not program — what each component uses, what it is for, and what it is like — and walks through
-standing it up and testing it. Also in Spanish: [`docs/MANUAL.es.md`](docs/MANUAL.es.md).
+### Where to start reading
 
-## Specification
+| If you are | Start here |
+|---|---|
+| Evaluating this as a product | This page, then [`docs/Ejemplo_Practico_es.md`](docs/Ejemplo_Practico_es.md) — twelve steps, every output real |
+| New to the concepts | [`docs/MANUAL.md`](docs/MANUAL.md) — the whole system, component by component. Also in Spanish: [`docs/MANUAL.es.md`](docs/MANUAL.es.md) |
+| Building a verifier | [`docs/protocol/00-index.md`](docs/protocol/00-index.md) — 26 sections, written so a third party can build a conformant verifier **without running any code from this repository**. The two files you must implement are [identity](docs/protocol/03-identity.md) and [cryptography](docs/protocol/04-cryptography.md) |
+| Interested in federation | [`docs/Ejemplo_Practico_federation_es.md`](docs/Ejemplo_Practico_federation_es.md) |
+| Assessing the risk | [`docs/protocol/13-threat-model.md`](docs/protocol/13-threat-model.md), and §20.5 in particular: the controls that **do not exist yet**, each with its consequence |
 
-The protocol and architecture are defined in [`docs/protocol/`](docs/protocol/) — 26 sections,
-written so a third party can build a conformant verifier **without running any code from this
-repository**.
+---
 
-Start with [`docs/protocol/00-index.md`](docs/protocol/00-index.md). The two files a verifier
-must implement are [identity](docs/protocol/03-identity.md) and
-[cryptography](docs/protocol/04-cryptography.md).
-
-## Repository status
-
-Implementation is proceeding phase by phase (see
-[roadmap](docs/protocol/19-roadmap.md)). What exists and runs today:
+## Status
 
 Phase numbering follows [the roadmap](docs/protocol/19-roadmap.md) exactly. A phase is ✅ only
 when its own stated deliverable exists in this repository.
@@ -68,14 +394,15 @@ when its own stated deliverable exists in this repository.
 |---|---|---|
 | 0–1 Definition & architecture | ✅ | Protocol specification v0.1, 26 sections, Mermaid diagrams, threat model with accepted risks |
 | 2 Protocol | ✅ | 10 JSON Schemas with 41 examples, 3 JSON-LD contexts, OpenAPI 3.1 (28 paths), 13 published vector sets, `uai-conformance` |
-| 3 Data | ✅ | PostgreSQL schema, 36 tables, integrity guards, 86 executable invariant assertions |
+| 3 Data | ✅ | PostgreSQL schema, 45 tables, integrity guards, 94 executable invariant assertions |
 | 4 Backend core | ✅ | `internal/store`, `internal/api`, `services/gateway`. Register → bind → attest runs as a test, not a claim |
 | 5 Cryptography | ✅ | `pkg/uaiid`, `pkg/uaicrypto`, `pkg/merkle`, `pkg/pop` (RFC 9421 PoP), `pkg/keys` (rotation, compromise, validity at event time), `pkg/receipt` |
 | 6 Policy engine | ✅ | `pkg/policy` (dependency-free bundle verification), `internal/pdp` (embedded OPA), the 3-of-5 signed GASC bundle, signed decision records |
 | 7 Blockchain | ✅ | 7 contracts with Foundry fuzzing, `internal/translog` (log, SCITT receipts, witness co-signing), `internal/chain`, `services/ledger-writer` |
-| 8 Frontend | ✅ | Six surfaces in `web/`, one origin with a strict CSP, and a verify page that verifies in the browser rather than rendering our verdict |
+| 8 Frontend | ✅ | Seven pages in `web/`, one origin with a strict CSP, and a verify page that verifies in the browser rather than rendering our verdict |
 | 9 SDK | ✅ | `sdk/go`, `sdk/python`, `sdk/typescript`, `mcp/` with the 8 tools of §22.9 |
 | 10 Demo | ✅ | `make demo` runs the ACME scenario and fails unless all 21 MVP criteria are demonstrated; `tools/uai-verify` re-checks the history from public data alone |
+| — Federation, step 1 | ✅ | Registry identity (UAI-AS), explicit peering, one signed identity announcement between two peers. **Not** transit, routing, discovery or propagation — see [Federation](#federation-the-network-this-is-built-toward) |
 | 11–12 | ⬜ | Security validation, deployment |
 
 Phase 5 ran ahead of Phase 2 because the backend needed canonical bytes and signatures before
@@ -83,53 +410,24 @@ anything else could be built. Phase 2 has since closed that gap: the crypto core
 against **committed vectors**, and an implementation in any language can be verified against the
 same files without running this code.
 
-The verification core is deliberately dependency-free — it is what a relying party runs to decide
-whether evidence is genuine, and every dependency there is supply-chain surface. A test enforces
-that rule rather than leaving it to discipline.
-
 ```bash
+make check           # build, vet, lint, unit tests, conformance, policy, docs gate
 make conformance     # 161 checks: vectors, schemas, OpenAPI
 make vectors-check   # fails if regenerating the vectors would change them
+make integration     # throwaway PostgreSQL: store + API + 94 invariant assertions
+make pentest         # 16 attacks across 10 threats, every one refused
 ```
 
 Every vector set and every schema carries negative cases. Passing only the positive ones would
 not demonstrate domain separation, rejection of malformed identifiers, fork detection, or that a
 vote without hardware user verification is refused.
 
-```bash
-make test        # Go unit tests (identifiers, crypto suite, Merkle log)
-make up          # infrastructure containers
-make migrate     # apply the schema
-```
+---
 
-### Containers
+## How it holds up
 
-The reference runtime is **rootless Podman**; Docker works on every target via
-`make CONTAINER=docker <target>`. The runtime was fixed now, in Phase 4, rather than after the
-last phase, because SPIRE derives workload identity from what the runtime can attest and its
-selectors are runtime-specific — so in this system the runtime is the base of the workload trust
-chain, not packaging. The reasoning and the measured comparison are in
-[ADR-0001](docs/adr/0001-podman-rootless-runtime.md).
-
-```bash
-make runtime     # what was detected: runtime, compose provider, image tags
-make image       # gateway image: FROM scratch, non-root, reproducible
-```
-
-The compose stack contains only services the code actually uses — today that is PostgreSQL
-alone, pinned by manifest digest. Services join it in the phase that wires them.
-
-### The invariant tests
-
-The security model is executable, not aspirational. `test/invariants/invariants.sql` asserts
-that **forbidden operations fail** — evidence cannot be edited, truncated or re-shredded; votes
-cannot be altered; an automated process cannot cast a vote; a revoked identity keeps its
-history; a guardrail decision cannot omit its policy version; a chain fork cannot be committed.
-
-```bash
-psql -v ON_ERROR_STOP=1 -f test/invariants/invariants.sql
-```
-
+The rest of this page is the engineering argument behind the claims above: why each guarantee is
+enforced where it cannot be bypassed, and what each one deliberately does not promise.
 ### Ownership is proven, not declared
 
 Registering an agent takes **two signatures that name the same subject** — one from the owner's
@@ -396,6 +694,40 @@ forgery this design leaves room for, and that is the check that catches it.
 
 If you let it fetch the anchors from the gateway it is auditing, it says so in the output:
 that run proves internal consistency, not authenticity.
+
+---
+
+### Containers
+
+The reference runtime is **rootless Podman**; Docker works on every target via
+`make CONTAINER=docker <target>`. The runtime was fixed now, in Phase 4, rather than after the
+last phase, because SPIRE derives workload identity from what the runtime can attest and its
+selectors are runtime-specific — so in this system the runtime is the base of the workload trust
+chain, not packaging. The reasoning and the measured comparison are in
+[ADR-0001](docs/adr/0001-podman-rootless-runtime.md).
+
+```bash
+make runtime     # what was detected: runtime, compose provider, image tags
+make image       # gateway image: FROM scratch, non-root, reproducible
+```
+
+The compose stack contains only services the code actually uses — today that is PostgreSQL
+alone, pinned by manifest digest. Services join it in the phase that wires them.
+
+### The invariant tests
+
+The security model is executable, not aspirational. `test/invariants/invariants.sql` asserts
+that **forbidden operations fail** — evidence cannot be edited, truncated or re-shredded; votes
+cannot be altered; an automated process cannot cast a vote; a revoked identity keeps its
+history; a guardrail decision cannot omit its policy version; a chain fork cannot be committed.
+
+```bash
+make invariants   # through the runner, never through a pipe: `psql | grep` reports a
+                  # failing invariant and exits 0, which is how this suite ran green
+                  # for nine phases without ever having been enforced
+```
+
+---
 
 ## Design priorities
 
