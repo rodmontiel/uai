@@ -8,6 +8,7 @@ import (
 
 	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/internal/translog"
+	"github.com/rodmontiel/uai/pkg/assurance"
 	"github.com/rodmontiel/uai/pkg/attest"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 )
@@ -167,7 +168,10 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 		WriteStoreError(w, r, err)
 		return
 	}
-	card := identityCard(agent)
+	// Derived, never the stored column. The identity card is what a relying
+	// party reads about an identity, so it is the last place that may report a
+	// level nobody recomputed.
+	card := identityCard(agent, s.assuranceFor(r.Context(), agent.ID, s.now()))
 	// A revoked identity names the decision that revoked it. Without this, an
 	// independent verifier reading REVOKED has nothing to check: "revoked" with
 	// no decision to recompute is exactly the state an operator acting alone
@@ -312,7 +316,7 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	// holding it there, because a bare UAI-AL0 is indistinguishable from a
 	// misconfiguration while "limited by owner verification" says what would
 	// have to change.
-	al := s.assuranceFor(r, agent.ID, s.now())
+	al := s.assuranceFor(r.Context(), agent.ID, s.now())
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	out := map[string]any{
 		"identity":             agent.UAIID,
@@ -334,7 +338,7 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, out)
 }
 
-func identityCard(a store.Agent) map[string]any {
+func identityCard(a store.Agent, al assurance.Result) map[string]any {
 	card := map[string]any{
 		"uai_id":               a.UAIID,
 		"did":                  a.DID,
@@ -342,7 +346,7 @@ func identityCard(a store.Agent) map[string]any {
 		"version":              a.Version,
 		"agent_type":           a.AgentType,
 		"status":               a.Status,
-		"assurance_level":      a.AssuranceLevel,
+		"assurance_level":      al.Level.String(),
 		"primary_jurisdiction": a.PrimaryJurisdiction,
 		"identity_commitment":  a.IdentityCommitment,
 		"policy_version":       a.PolicyVersion,

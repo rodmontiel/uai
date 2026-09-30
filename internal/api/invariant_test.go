@@ -53,8 +53,8 @@ func (e *env) registeredWithKey(t *testing.T) (store.Agent, uaicrypto.Signer) {
 		ID: "ag-" + id, UAIID: "uai:agent:" + id, DID: "did:uai:agent:" + id,
 		OwnerID: e.ownerID, OrganizationID: e.agent.OrganizationID,
 		LogicalName: "UnprovenAgent", AgentType: "autonomous_task_agent",
-		PrimaryJurisdiction: "AR", AssuranceLevel: "UAI-AL0",
-		IdentityCommitment: "sha256:" + repeat64('a'), PolicyVersion: "GASC-2027.4",
+		PrimaryJurisdiction: "AR",
+		IdentityCommitment:  "sha256:" + repeat64('a'), PolicyVersion: "GASC-2027.4",
 		GenesisEventHash: "sha256:" + repeat64('b'), Status: "REGISTERED",
 	}
 	signer, pub, err := uaicrypto.GenerateEd25519Signer(agent.DID + "#key-1")

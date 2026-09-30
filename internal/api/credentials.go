@@ -29,7 +29,7 @@ const (
 // exchange and minted this identifier -- the ownership claim itself does not
 // rest on trusting us.
 func (s *Server) issueRegistrationCredentials(reg store.Registration, agent store.Agent,
-	id uaiid.ID, orgDID string, at time.Time) ([]store.Credential, error) {
+	assuranceLevel string, id uaiid.ID, orgDID string, at time.Time) ([]store.Credential, error) {
 
 	if s.issuer == nil {
 		return nil, fmt.Errorf("api: no credential issuer key configured")
@@ -41,7 +41,7 @@ func (s *Server) issueRegistrationCredentials(reg store.Registration, agent stor
 			ID: agent.DID, Name: agent.LogicalName, Version: agent.Version,
 			AgentType: agent.AgentType, Vendor: agent.Vendor, ModelFamily: agent.ModelFamily,
 			ModelPinned: agent.ModelPinned, Framework: agent.Framework,
-			PrimaryJurisdiction: agent.PrimaryJurisdiction, AssuranceLevel: agent.AssuranceLevel,
+			PrimaryJurisdiction: agent.PrimaryJurisdiction, AssuranceLevel: assuranceLevel,
 			AgentKeyThumbprint: reg.AgentKeyThumbprint,
 		}, at, &identityUntil)
 	if err != nil {

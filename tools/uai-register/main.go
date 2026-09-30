@@ -38,6 +38,7 @@ import (
 
 	"github.com/rodmontiel/uai/internal/keyfile"
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/pkg/assurance"
 	"github.com/rodmontiel/uai/pkg/challenge"
 	"github.com/rodmontiel/uai/pkg/pop"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
@@ -676,20 +677,47 @@ func show(args []string) error {
 	}
 
 	agents, err := db.Pool().Query(ctx, `
-		SELECT uai_id, logical_name, status::text, assurance_level::text
+		SELECT id, uai_id, logical_name, status::text
 		  FROM agents ORDER BY registered_at DESC LIMIT 50`)
 	if err != nil {
 		return err
 	}
-	defer agents.Close()
-	fmt.Println()
-	fmt.Printf("  %-40s %-22s %-12s %s\n", "UAI-ID", "NAME", "STATUS", "ASSURANCE")
+	type agentRow struct{ id, uaiID, name, status string }
+	var listed []agentRow
 	for agents.Next() {
-		var id, name, status, al string
-		if err := agents.Scan(&id, &name, &status, &al); err != nil {
+		var r agentRow
+		if err := agents.Scan(&r.id, &r.uaiID, &r.name, &r.status); err != nil {
+			agents.Close()
 			return err
 		}
-		fmt.Printf("  %-40s %-22s %-12s %s\n", id, name, status, al)
+		listed = append(listed, r)
+	}
+	agents.Close()
+	if err := agents.Err(); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("  %-40s %-22s %-12s %-10s %s\n", "UAI-ID", "NAME", "STATUS", "ASSURANCE", "LIMITED BY")
+	now := time.Now().UTC()
+	for _, r := range listed {
+		// Derived per identity, through the same call the API makes. There is no
+		// stored level to read: it was a column holding the value written at
+		// registration, and printing it here told an operator that an identity
+		// whose evidence had moved was still what it was on day one.
+		//
+		// One query per agent, on a listing capped at 50, in a CLI an operator
+		// runs by hand. The alternative is a second implementation of §6.8.
+		level, limited := "?", "evidence unavailable"
+		if in, err := db.AssuranceEvidence(ctx, r.id, now); err == nil {
+			res := assurance.FromEvidence(in.KeyProtections, in.OwnerVerification,
+				in.Attestor, in.ImageDigest)
+			level, limited = res.Level.String(), string(res.LimitedBy)
+			if limited == "" {
+				limited = "nothing"
+			}
+		}
+		fmt.Printf("  %-40s %-22s %-12s %-10s %s\n", r.uaiID, r.name, r.status, level, limited)
 	}
 	return nil
 }

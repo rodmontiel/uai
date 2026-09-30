@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rodmontiel/uai/internal/store"
+	"github.com/rodmontiel/uai/pkg/assurance"
 	"github.com/rodmontiel/uai/pkg/challenge"
 	"github.com/rodmontiel/uai/pkg/uaicrypto"
 	"github.com/rodmontiel/uai/pkg/uaiid"
@@ -404,7 +405,7 @@ func (s *Server) mint(w http.ResponseWriter, r *http.Request, reg store.Registra
 		// the credential chain to validate, and ACTIVE additionally needs a
 		// runtime binding. Collapsing the three would make the distinction a
 		// relying party reads off /verify meaningless.
-		AssuranceLevel: "UAI-AL0", Status: "REGISTERED",
+		Status:             "REGISTERED",
 		IdentityCommitment: uaicrypto.FormatDigest(commitment), IdentityCommitmentSalt: salt,
 		PolicyVersion: reg.PolicyVersion, GenesisEventHash: uaicrypto.FormatDigest(genesis),
 	}
@@ -412,6 +413,19 @@ func (s *Server) mint(w http.ResponseWriter, r *http.Request, reg store.Registra
 		ID: "key-" + id.ULID().String(), KeyID: "key-1", Alg: alg,
 		PublicJWK: reg.AgentPublicJWK, Protection: "SOFTWARE", ValidFrom: now,
 	}
+	// Derived, not written as the string "UAI-AL0".
+	//
+	// The identity being minted is not in the database yet, so there is nothing
+	// to query -- but its evidence is fully known right here: this one key, no
+	// runtime (a binding names an identifier and so cannot precede it), and an
+	// owner nobody has verified (§20.5). Deriving it means the day any of the
+	// three changes, the credential and the response follow instead of being
+	// two more places to remember.
+	al := assurance.Derive(assurance.Evidence{
+		Key:     assurance.KeyProtection(key.Protection),
+		Owner:   assurance.SelfAsserted,
+		Runtime: assurance.NoRuntime,
+	}).Level.String()
 	orgDID, err := s.db.OrganizationDIDByID(r.Context(), reg.OrganizationID)
 	if err != nil {
 		WriteStoreError(w, r, err)
@@ -419,7 +433,7 @@ func (s *Server) mint(w http.ResponseWriter, r *http.Request, reg store.Registra
 	}
 	// §8.2 issues the identity and its credentials in the same step, so this
 	// fails the whole mint rather than producing an identity nobody can verify.
-	creds, err := s.issueRegistrationCredentials(reg, agent, id, orgDID, now)
+	creds, err := s.issueRegistrationCredentials(reg, agent, al, id, orgDID, now)
 	if err != nil {
 		WriteProblem(w, r, http.StatusInternalServerError, "UAI_CREDENTIAL_ISSUANCE_FAILED", err.Error(),
 			WithRemediation("The registration is still open; retry once the issuer is available."))
@@ -435,7 +449,7 @@ func (s *Server) mint(w http.ResponseWriter, r *http.Request, reg store.Registra
 	}
 	WriteJSON(w, http.StatusCreated, RegisteredAgent{
 		UAIID: agent.UAIID, DID: agent.DID, LogicalName: agent.LogicalName,
-		Status: agent.Status, AssuranceLevel: agent.AssuranceLevel,
+		Status: agent.Status, AssuranceLevel: al,
 		IdentityCommitment: agent.IdentityCommitment, PolicyVersion: agent.PolicyVersion,
 		GenesisEventHash: agent.GenesisEventHash, Credentials: issued,
 	})

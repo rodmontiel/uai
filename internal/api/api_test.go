@@ -92,7 +92,7 @@ func setup(t *testing.T) *env {
 	agent := store.Agent{
 		ID: agentID, UAIID: "uai:agent:" + agentULID, DID: "did:uai:agent:" + agentULID,
 		OwnerID: ownerID, OrganizationID: orgID, LogicalName: "DeliveryOptimizer",
-		AgentType: "autonomous_task_agent", PrimaryJurisdiction: "AR", AssuranceLevel: "UAI-AL2",
+		AgentType: "autonomous_task_agent", PrimaryJurisdiction: "AR",
 		IdentityCommitment: "sha256:" + strings.Repeat("a", 64), PolicyVersion: "GASC-2027.4",
 		GenesisEventHash: "sha256:" + strings.Repeat("b", 64), Status: "ACTIVE",
 	}

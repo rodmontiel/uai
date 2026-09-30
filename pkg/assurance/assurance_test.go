@@ -101,3 +101,70 @@ func TestLevelRoundTrips(t *testing.T) {
 		t.Error("UAI-AL9 was accepted")
 	}
 }
+
+// TestFromEvidenceIsTheOnlyTranslation covers the step that used to live
+// privately in the API: raw stored strings to a level. It is here and not
+// there because the API is not the only reader, and a second implementation of
+// §6.8 is a second answer.
+func TestFromEvidenceIsTheOnlyTranslation(t *testing.T) {
+	cases := []struct {
+		name          string
+		protections   []string
+		owner         string
+		attestor      string
+		imageDigest   string
+		wantLevel     assurance.Level
+		wantLimitedBy assurance.Dimension
+	}{
+		{
+			name: "nothing bound", protections: []string{"SOFTWARE"}, owner: "SELF_ASSERTED",
+			wantLevel: assurance.AL0, wantLimitedBy: assurance.DimRuntime,
+		},
+		{
+			// The case the whole runtime dimension exists for: the agent said
+			// where it runs, and its word is worth exactly nothing.
+			name: "self-declared runtime", protections: []string{"SOFTWARE"},
+			owner: "SELF_ASSERTED", attestor: "self-declared",
+			wantLevel: assurance.AL0, wantLimitedBy: assurance.DimRuntime,
+		},
+		{
+			name: "attested runtime, owner is now the ceiling", protections: []string{"SOFTWARE"},
+			owner: "SELF_ASSERTED", attestor: "spiffe://uai.test",
+			wantLevel: assurance.AL0, wantLimitedBy: assurance.DimOwner,
+		},
+		{
+			// An image digest only counts when the attestor supplied it. The
+			// caller is responsible for not passing one the agent typed.
+			// Key AL3, owner AL2, runtime AL2: the minimum is AL2 and two
+			// dimensions hold it there. The tie goes to the one a reader can act
+			// on soonest, which is the runtime -- the owner is reported in
+			// Reached either way, so nothing is hidden by the choice.
+			name: "attested with an image digest", protections: []string{"HSM"},
+			owner: "ORG_CREDENTIAL_VERIFIED", attestor: "spiffe://uai.test",
+			imageDigest: "sha256:abc",
+			wantLevel:   assurance.AL2, wantLimitedBy: assurance.DimRuntime,
+		},
+		{
+			// Evidence the registry cannot read is not evidence. An empty
+			// protection list means no valid key, and guessing upward here is
+			// the one direction this must never guess in.
+			name: "no valid key", protections: nil, owner: "LEGAL_ENTITY_VERIFIED",
+			attestor: "spiffe://uai.test", imageDigest: "sha256:abc",
+			wantLevel: assurance.AL1, wantLimitedBy: assurance.DimKey,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := assurance.FromEvidence(c.protections, c.owner, c.attestor, c.imageDigest)
+			if got.Level != c.wantLevel {
+				t.Errorf("level = %s, want %s (reached %v)", got.Level, c.wantLevel, got.Reached)
+			}
+			if got.LimitedBy != c.wantLimitedBy {
+				t.Errorf("limited by %q, want %q", got.LimitedBy, c.wantLimitedBy)
+			}
+			if got.Detail == "" {
+				t.Error("a level below AL3 must say what would have to change")
+			}
+		})
+	}
+}

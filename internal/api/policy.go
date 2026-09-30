@@ -106,7 +106,7 @@ func (s *Server) evaluate(w http.ResponseWriter, r *http.Request) {
 	// has to be answered with what this identity can currently demonstrate,
 	// and the stored column has never been anything but its registration-time
 	// value (§6.8).
-	al := s.assuranceFor(r, agent.ID, now)
+	al := s.assuranceFor(r.Context(), agent.ID, now)
 
 	input := map[string]any{
 		"identity": map[string]any{

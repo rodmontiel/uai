@@ -177,7 +177,7 @@ func (e *env) issuePassport(t *testing.T, allowed, restricted []string, capabili
 	if err := e.db.CreatePassport(context.Background(), store.PassportRecord{
 		ID: "urn:uai:passport:" + ulid("P"), AgentID: e.agent.ID,
 		State: string(passport.StateValid), AllowedJurisdictions: allowed,
-		RestrictedJurisdictions: restricted, AssuranceLevel: e.agent.AssuranceLevel,
+		RestrictedJurisdictions: restricted, AssuranceLevel: "UAI-AL0",
 		PolicyVersion: "GASC-2027.4", PolicyBundleHash: "sha256:" + repeat64('a'),
 		ValidFrom: now.Add(-time.Hour), ValidUntil: now.Add(24 * time.Hour),
 		Capabilities: scoped,

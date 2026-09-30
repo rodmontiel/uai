@@ -1,0 +1,28 @@
+-- 0011 — the assurance level is derived, never stored.
+--
+-- agents.assurance_level was written once, at registration, with its default
+-- 'UAI-AL0', and nothing in the codebase ever wrote it again. pkg/assurance was
+-- added to compute the level from evidence (§6.8: key protection, owner
+-- verification, runtime attestation) and GET /v1/verify was changed to use it --
+-- but the column stayed, and four other surfaces kept reading it: the identity
+-- card, uai-register show, the quarantine scope decision, and the assurance
+-- level stamped into an issued passport credential.
+--
+-- They agreed with the derived value only because owner verification is pinned
+-- at SELF_ASSERTED, so every identity is AL0 today. The day §20.5's did:web
+-- control proof exists, /verify would report AL2 while a signed passport
+-- credential asserted AL0 -- a signed document contradicting the registry that
+-- signed it.
+--
+-- A stored copy of a derived value is a cache, and this one had no invalidation
+-- path: the evidence changes when a key is rotated, a runtime binding expires
+-- or an owner is verified, and none of those events went anywhere near this
+-- column. Dropping it is the only change that makes the stale read impossible
+-- rather than merely unused.
+--
+-- What is NOT dropped: passports.assurance_level and capabilities.min_assurance.
+-- A passport records the level AT ISSUANCE on purpose -- that snapshot is what
+-- survives the evidence changing afterwards, the same reason an attestation
+-- records passport status at decision time -- and min_assurance is a floor
+-- somebody declared, not a fact about an identity.
+ALTER TABLE agents DROP COLUMN assurance_level;

@@ -217,6 +217,45 @@ func Derive(e Evidence) Result {
 	return Result{Level: level, Reached: reached}
 }
 
+// FromEvidence derives a level from the raw values a registry records about one
+// identity: every currently-valid key protection, how the owner was
+// established, the attestor that vouched for the live runtime (empty when
+// nothing is bound), and the image digest recorded with it.
+//
+// It exists so there is exactly one translation from stored strings to a level.
+// Before it, the API turned an attestor into a RuntimeAttestation privately,
+// which meant any other reader -- an operator CLI, a report, a migration
+// check -- had to reimplement the rule that "self-declared" is worth nothing,
+// and a second implementation of that rule is a second answer to the only
+// question this package exists to answer.
+func FromEvidence(keyProtections []string, ownerVerification, attestor, imageDigest string) Result {
+	return Derive(Evidence{
+		Key:     Strongest(keyProtections),
+		Owner:   OwnerVerification(ownerVerification),
+		Runtime: RuntimeOf(attestor, imageDigest),
+	})
+}
+
+// RuntimeOf reads §6.8's third column off what a binding recorded.
+//
+// "self-declared" maps to NONE deliberately. A runtime the agent described
+// itself is worth the same as no runtime at all -- it is the agent's word about
+// where it is running, signed by the agent.
+//
+// An image digest counts only because an attestor supplied it as a selector. A
+// digest the agent typed into a request body is its own claim about its own
+// code, and the caller must not pass one here.
+func RuntimeOf(attestor, imageDigest string) RuntimeAttestation {
+	switch {
+	case attestor == "" || attestor == "self-declared":
+		return NoRuntime
+	case imageDigest != "":
+		return SVIDWithImage
+	default:
+		return SVIDOnly
+	}
+}
+
 // Strongest picks the best key protection an identity holds.
 //
 // Neither the database enum's declaration order nor its alphabet is a strength

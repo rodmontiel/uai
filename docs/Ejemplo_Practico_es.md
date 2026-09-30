@@ -275,6 +275,14 @@ export UAI_OWNER_DID="did:uai:owner:01M3KY9S364H567V267AFWSM7F"
 
 ### Conectárselo a Claude Code
 
+Si ya lo agregaste en una corrida anterior, sacalo primero. `claude mcp add` **no pisa** una
+entrada existente: avisa `MCP server uai already exists in local config` y te deja apuntando al
+agente viejo, que después de un `nuke` ya no existe en el registro.
+
+```bash
+claude mcp remove uai
+```
+
 ```bash
 claude mcp add uai -- $PWD/uai-mcp \
   -endpoint https://localhost:8080 \
@@ -412,6 +420,23 @@ por desconfiar del dueño, sino porque **con una fotocopia no se retira plata**.
 **UAI-AL0**; `crm.customer.read` pide **UAI-AL1**. El nivel de una identidad es el **mínimo**
 de tres dimensiones (protección de la llave, verificación del dueño, atestación del runtime), y
 tu agente está en AL0 porque **nadie demostró control del DID de tu organización**.
+
+El nivel no se setea: se **deriva** de la evidencia en cada lectura, y el registro te dice cuál
+de las tres dimensiones es el techo.
+
+```bash
+go run ./tools/uai-register show
+```
+
+```
+  UAI-ID                                   NAME                   STATUS       ASSURANCE  LIMITED BY
+  uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB     MiPrimerAgente         ACTIVE       UAI-AL0    owner verification
+```
+
+`owner verification` es la respuesta a "¿y qué hago para subirlo?". Si todavía no bindeaste un
+runtime atestado (paso 3), vas a ver `runtime attestation`: ese sí lo podés arreglar hoy. El de
+dueño no, y no está: la prueba de control de `did:web` figura como pendiente en
+[§20.5](protocol/13-threat-model.md), con su consecuencia escrita.
 
 Probalo: pedí `crm.customer.read`, aprobala con tu llave, y consultá igual.
 
@@ -593,10 +618,12 @@ preguntar.
 | Síntoma | Causa y solución |
 |---|---|
 | `Client sent an HTTP request to an HTTPS server` | El gateway sirve TLS y tu `-endpoint` dice http. Agregá `-endpoint https://localhost:8080 -ca .spire/bootstrap.pem`, o exportá las variables que imprime `./deploy.sh up` |
-| `certificate signed by unknown authority` | Falta el CA. `-ca .spire/bootstrap.pem`, o `export UAI_API_CA=.spire/bootstrap.pem` |
+| `certificate signed by unknown authority` **en tu cliente** | Falta el CA. `-ca .spire/bootstrap.pem`, o `export UAI_API_CA=.spire/bootstrap.pem` |
+| `UAI_RUNTIME_NOT_ATTESTED: chain does not verify against the trust bundle` | Misma frase, dirección opuesta: el que no confía es **el gateway**. Lee `bootstrap.pem` una sola vez al arrancar, así que si el SPIRE server se reinició después (CA nueva, `bootstrap.pem` reescrito) el gateway sigue con el bundle viejo. Reiniciá el gateway: `podman restart uai_uai-gateway_1` |
 | `uai-verify` imprime el uso y sale 2 | Se pasaron dos identificadores, o ninguno. El mensaje dice cuántos recibió |
 | `UAI_RUNTIME_ATTESTATION_REQUIRED` en el bind | Tu stack verifica runtimes, así que el bind necesita presentar un SVID: `make spire-entry ULID=… && make spire-svid ULID=…` y después `bind -svid .spire/svid` |
 | `no SVID naming <ULID> after 20s` | No hay entrada para ese ULID. Corré `make spire-entry ULID=…` primero |
+| Bindeaste ayer y hoy `/verify` dice `no attested runtime` | El binding vence con el SVID que lo probó (acá, una hora). No es un error: un SVID que el atestador dejó de avalar no dice nada sobre ahora. Volvé a correr `make spire-svid ULID=…` y el `bind` |
 | `UAI_OWNER_NOT_ELIGIBLE` | El dueño que nombraste no está en esta base. `go run ./tools/uai-register show` lista los que hay |
 | `.keys/owner.jwk already exists` | Está bien, no la va a pisar. Si el dueño existe, el mensaje te dice cuál es; si no existe ninguno, `uai-register owner -reuse-key` |
 | `UAI_KEY_NOT_UNIQUE` | Esa llave ya nombra a otra identidad. Una llave nombra a una sola: dos identidades compartiéndola hacen que una firma no diga cuál de las dos firmó. Generá una nueva, o usá la identidad que ya existe |

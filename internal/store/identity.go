@@ -46,11 +46,14 @@ type Agent struct {
 	ModelPinned         bool
 	Framework           string
 	PrimaryJurisdiction string
-	AssuranceLevel      string
-	Status              string
-	IdentityCommitment  string
-	PolicyVersion       string
-	GenesisEventHash    string
+	// No AssuranceLevel. It is derived from evidence (pkg/assurance) on every
+	// read, never stored: a column holding it would be a cache nothing
+	// invalidates, and for its whole life it held the default written at
+	// registration while the evidence moved underneath it.
+	Status             string
+	IdentityCommitment string
+	PolicyVersion      string
+	GenesisEventHash   string
 	// IdentityCommitmentSalt opens IdentityCommitment. Without it the on-chain
 	// commitment is a hash nobody can ever tie back to this identity.
 	IdentityCommitmentSalt []byte
@@ -125,15 +128,14 @@ func insertAgent(ctx context.Context, tx pgx.Tx, a Agent, key AgentKey) error {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO agents (id, uai_id, did, owner_id, organization_id, logical_name, version,
 			                    agent_type, vendor, model_family, model_pinned, framework,
-			                    primary_jurisdiction, assurance_level, status,
+			                    primary_jurisdiction, status,
 			                    identity_commitment, policy_version, genesis_event_hash,
 			                    identity_commitment_salt)
 			VALUES ($1,$2,$3,$4,$5,$6,COALESCE(NULLIF($7,''),'0.0.0'),$8,$9,$10,$11,$12,$13,
-			        COALESCE(NULLIF($14,''),'UAI-AL0')::assurance_level,
-			        COALESCE(NULLIF($15,''),'REGISTERED')::agent_status,$16,$17,$18,$19)`,
+			        COALESCE(NULLIF($14,''),'REGISTERED')::agent_status,$15,$16,$17,$18)`,
 			a.ID, a.UAIID, a.DID, a.OwnerID, orgID, a.LogicalName, a.Version, a.AgentType,
 			nullable(a.Vendor), nullable(a.ModelFamily), a.ModelPinned, nullable(a.Framework),
-			a.PrimaryJurisdiction, a.AssuranceLevel, a.Status,
+			a.PrimaryJurisdiction, a.Status,
 			a.IdentityCommitment, a.PolicyVersion, a.GenesisEventHash,
 			nullableBytes(a.IdentityCommitmentSalt))
 		if err != nil {
@@ -191,12 +193,12 @@ func (db *DB) AgentByUAIID(ctx context.Context, uaiID string) (Agent, error) {
 	err := db.pool.QueryRow(ctx, `
 		SELECT id, uai_id, did, owner_id, organization_id, logical_name, version, agent_type,
 		       vendor, model_family, model_pinned, framework, primary_jurisdiction,
-		       assurance_level::text, status::text, identity_commitment, policy_version,
+		       status::text, identity_commitment, policy_version,
 		       genesis_event_hash, registered_at, revoked_at
 		FROM agents WHERE uai_id = $1`, uaiID).
 		Scan(&a.ID, &a.UAIID, &a.DID, &a.OwnerID, &orgID, &a.LogicalName, &a.Version, &a.AgentType,
 			&vendor, &modelFamily, &a.ModelPinned, &framework, &a.PrimaryJurisdiction,
-			&a.AssuranceLevel, &a.Status, &a.IdentityCommitment, &a.PolicyVersion,
+			&a.Status, &a.IdentityCommitment, &a.PolicyVersion,
 			&a.GenesisEventHash, &a.RegisteredAt, &a.RevokedAt)
 	if err != nil {
 		return Agent{}, classify(err)

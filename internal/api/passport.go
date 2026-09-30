@@ -76,6 +76,11 @@ func (s *Server) requestPassport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := s.now().UTC()
+	// Derived once, from evidence, and then used for every decision and every
+	// document this request produces. A passport records the level at issuance
+	// -- that is the point of recording it -- but it must record the level the
+	// registry could demonstrate, not the default written at registration.
+	al := s.assuranceFor(r.Context(), agent.ID, now).Level.String()
 	granted, err := s.db.CapabilityGrants(r.Context(), agent.ID, now)
 	if err != nil {
 		WriteStoreError(w, r, err)
@@ -110,7 +115,7 @@ func (s *Server) requestPassport(w http.ResponseWriter, r *http.Request) {
 		"restricted_jurisdictions": upper(body.RestrictedJurisdictions),
 		"authorized_capabilities":  capabilityNames(body.Capabilities),
 	}
-	effect, reason, evalErr := s.strictestOver(r.Context(), agent, body, granted, prospective)
+	effect, reason, evalErr := s.strictestOver(r.Context(), agent, al, body, granted, prospective)
 	if evalErr != nil {
 		problemLog(r, "passport eligibility evaluation failed", evalErr)
 		effect, reason = "DENY", "evaluation_failed"
@@ -143,7 +148,7 @@ func (s *Server) requestPassport(w http.ResponseWriter, r *http.Request) {
 			ID: passportID, AgentID: agent.ID, State: string(passport.StateRequested),
 			AllowedJurisdictions:    upper(body.AllowedJurisdictions),
 			RestrictedJurisdictions: upper(body.RestrictedJurisdictions),
-			AssuranceLevel:          agent.AssuranceLevel, PolicyVersion: s.bundle.Version(),
+			AssuranceLevel:          al, PolicyVersion: s.bundle.Version(),
 			PolicyBundleHash: s.bundle.Hash(), DecisionID: decisionID,
 			Capabilities: body.Capabilities,
 			ValidFrom:    now, ValidUntil: now.Add(PassportTTL),
@@ -172,7 +177,7 @@ func (s *Server) requestPassport(w http.ResponseWriter, r *http.Request) {
 		ID: passportID, Agent: agent.DID,
 		AllowedJurisdictions:    upper(body.AllowedJurisdictions),
 		RestrictedJurisdictions: upper(body.RestrictedJurisdictions),
-		AuthorizedCapabilities:  body.Capabilities, AssuranceLevel: agent.AssuranceLevel,
+		AuthorizedCapabilities:  body.Capabilities, AssuranceLevel: al,
 		PolicyVersion: s.bundle.Version(), PolicyBundleHash: s.bundle.Hash(),
 		State: passport.StateValid, ValidFrom: now, ValidUntil: now.Add(PassportTTL),
 	}
@@ -303,7 +308,7 @@ func (s *Server) checkPassport(w http.ResponseWriter, r *http.Request) {
 	}
 	result := passport.Check(p, passport.Request{
 		Capability: body.Capability, Targets: body.Targets, RiskClass: body.RiskClass,
-		AgentAssurance: agent.AssuranceLevel,
+		AgentAssurance: s.assuranceFor(r.Context(), agent.ID, now).Level.String(),
 		// The stored credential was verified when it was issued and its hash is
 		// recorded; a caller holding the credential itself should verify the
 		// proof and not take our word for it, which is what the credential_hash
@@ -385,7 +390,7 @@ func upper(codes []string) []string {
 // set, so it can only be as permissive as its least permissive pair. Issuing on
 // a majority would hand back a passport that is wrong about part of its own
 // scope, and the part it is wrong about is the part that matters.
-func (s *Server) strictestOver(ctx context.Context, agent store.Agent,
+func (s *Server) strictestOver(ctx context.Context, agent store.Agent, assuranceLevel string,
 	body PassportRequestBody, granted []string, prospective map[string]any) (string, string, error) {
 
 	rank := map[string]int{
@@ -399,7 +404,7 @@ func (s *Server) strictestOver(ctx context.Context, agent store.Agent,
 		for _, target := range upper(body.AllowedJurisdictions) {
 			decision, err := s.bundle.Evaluate(ctx, map[string]any{
 				"identity": map[string]any{
-					"did": agent.DID, "assurance_level": agent.AssuranceLevel, "status": agent.Status,
+					"did": agent.DID, "assurance_level": assuranceLevel, "status": agent.Status,
 				},
 				"runtime": map[string]any{"bound": true},
 				"action": map[string]any{

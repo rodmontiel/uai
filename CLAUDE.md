@@ -320,3 +320,22 @@ autores angostó el protocolo sin decirlo.
     uso.** `invariants.sql` usaba `UAI-INC-000041` y el asignador reparte `UAI-INC-%06d` contando
     desde uno: la suite empezó a fallar el día que el registro abrió su caso número 41. No fue
     un cambio de código, fue que el sistema se usó.
+
+45. **Un valor derivado no se guarda.** `agents.assurance_level` se escribía una vez en el
+    registro y nada la actualizaba nunca; cuatro superficies la leían como si fuera el estado
+    actual — incluido el nivel estampado dentro de un credencial de pasaporte **firmado**. Una
+    copia guardada de algo derivado es un caché, y ése no tenía ninguna vía de invalidación: la
+    evidencia cambia cuando rota una llave, vence un binding o se verifica a un dueño, y ninguno
+    de esos eventos pasaba cerca de la columna.
+
+    Coincidían con el valor derivado sólo porque la verificación del dueño está clavada en
+    `SELF_ASSERTED` y hoy **todo es AL0**. Eso es lo peligroso: mientras un derivado es constante,
+    ningún test de comportamiento distingue "derivado" de "guardado", y el defecto es invisible
+    hasta el día que el derivado se mueve. Si no podés escribir un test que falle, la compuerta
+    tiene que ser estructural: la columna se borra (0011) y el campo sale del struct, para que
+    la lectura vieja sea un error de compilación y no un número equivocado.
+
+46. **Dos lectores de la misma regla son dos respuestas.** La traducción de "attestor guardado"
+    a "dimensión de runtime" vivía privada en `internal/api`, así que cualquier otro lector —un
+    CLI de operador, un reporte— tenía que reimplementar que `self-declared` no vale nada. Vive
+    en `pkg/assurance.FromEvidence`, junto a la tabla que le da sentido.

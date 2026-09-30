@@ -1,13 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/rodmontiel/uai/internal/store"
 	"github.com/rodmontiel/uai/pkg/assurance"
 	"github.com/rodmontiel/uai/pkg/spiffe"
 )
@@ -149,37 +149,18 @@ func svidRefusal(err error) *refusal {
 // Returns AL0 on any error. An assurance level that fails open would be a claim
 // about an identity we could not check, which is the one thing /verify must
 // never produce.
-func (s *Server) assuranceFor(r *http.Request, agentID string, now time.Time) assurance.Result {
-	in, err := s.db.AssuranceEvidence(r.Context(), agentID, now)
+//
+// It takes a context rather than a request because every surface that reports
+// an assurance level must reach the same answer -- the identity card, the
+// passport, the credentials, the policy input -- and some of them run without
+// a request in hand. A second way to obtain this number is a second answer.
+func (s *Server) assuranceFor(ctx context.Context, agentID string, now time.Time) assurance.Result {
+	in, err := s.db.AssuranceEvidence(ctx, agentID, now)
 	if err != nil {
 		return assurance.Result{Level: assurance.AL0, LimitedBy: "evidence",
 			Detail: "the registry could not read this identity's assurance evidence"}
 	}
-	return assurance.Derive(assurance.Evidence{
-		Key:     assurance.Strongest(in.KeyProtections),
-		Owner:   assurance.OwnerVerification(in.OwnerVerification),
-		Runtime: runtimeDimension(in),
-	})
-}
-
-// runtimeDimension reads §6.8's third column off a stored binding.
-//
-// "self-declared" maps to NONE deliberately. A runtime the agent described
-// itself is worth the same as no runtime at all -- it is the agent's word about
-// where it is running, signed by the agent -- and the whole point of phase 12 is
-// that those two are no longer written down the same way.
-func runtimeDimension(in store.AssuranceInputs) assurance.RuntimeAttestation {
-	switch {
-	case in.Attestor == "" || in.Attestor == "self-declared":
-		return assurance.NoRuntime
-	case in.ImageDigest != "":
-		// Reached only once an attestor supplies the digest as a selector. An
-		// image digest the agent typed into the request body is its own claim
-		// about its own code, and is not this.
-		return assurance.SVIDWithImage
-	default:
-		return assurance.SVIDOnly
-	}
+	return assurance.FromEvidence(in.KeyProtections, in.OwnerVerification, in.Attestor, in.ImageDigest)
 }
 
 // runtimeAttestationOf reports what the runtime dimension reached, for the

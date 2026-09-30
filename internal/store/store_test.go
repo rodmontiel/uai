@@ -102,8 +102,8 @@ func setup(t *testing.T) *fixture {
 		ID: agentID, UAIID: "uai:agent:" + ulid("A"), DID: "did:uai:agent:" + ulid("A"),
 		OwnerID: ownerID, OrganizationID: orgID, LogicalName: "DeliveryOptimizer",
 		AgentType: "autonomous_task_agent", PrimaryJurisdiction: "AR",
-		AssuranceLevel: "UAI-AL2", IdentityCommitment: digest(0),
-		PolicyVersion: "GASC-2027.4", GenesisEventHash: digest(1),
+		IdentityCommitment: digest(0),
+		PolicyVersion:      "GASC-2027.4", GenesisEventHash: digest(1),
 	}
 	// A distinct key per fixture. The literal "abc" was shared by every agent
 	// this helper ever made, which was invisible until the registry started
@@ -339,7 +339,10 @@ func TestAgentRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DID != f.agent.DID || got.AssuranceLevel != "UAI-AL2" || got.Status != "REGISTERED" {
+	// No assurance level in the round trip: the store does not carry one. It is
+	// derived from evidence on read (pkg/assurance), and a fixture that could
+	// set it to "UAI-AL2" was asserting that a lie survived a database.
+	if got.DID != f.agent.DID || got.Status != "REGISTERED" {
 		t.Fatalf("agent did not round trip: %+v", got)
 	}
 	keys, err := f.db.AgentKeys(ctx, f.agent.ID)

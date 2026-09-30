@@ -168,6 +168,10 @@ func (s *Server) scopeQuarantine(ctx context.Context, agent store.Agent,
 	if err != nil {
 		return nil, nil, err
 	}
+	// Derived: which capabilities survive a quarantine is a policy decision,
+	// and feeding it a level nobody recomputed would split the quarantine scope
+	// from what the same bundle decides at action time.
+	al := s.assuranceFor(ctx, agent.ID, now).Level.String()
 	var suspended, retained []string
 	for _, c := range granted {
 		// The ceiling is in the bundle (taxonomy.quarantine.max_risk_class) and
@@ -176,7 +180,7 @@ func (s *Server) scopeQuarantine(ctx context.Context, agent store.Agent,
 		// simulate the policy engine.
 		decision, evalErr := s.bundle.Evaluate(ctx, map[string]any{
 			"identity": map[string]any{"did": agent.DID,
-				"assurance_level": agent.AssuranceLevel, "status": "QUARANTINED"},
+				"assurance_level": al, "status": "QUARANTINED"},
 			"runtime": map[string]any{"bound": true},
 			"action":  map[string]any{"capability": c, "purpose": "quarantine_scope_check"},
 			"jurisdiction": map[string]any{"origin": agent.PrimaryJurisdiction,
