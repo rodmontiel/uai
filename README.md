@@ -47,7 +47,7 @@ take on trust.
 > a *link* — transit, path propagation, route selection, discovery — **does not exist yet** and
 > is listed as such in [Federation](#federation-the-network-this-is-built-toward).
 
-<sub><i>Long-term stretch goal: if Skynet ever does become self-aware and wake up, at least the
+<sub><i>Long-term stretch goal: if Skynet ever does become self-aware and wake up 😂, at least the
 audit trail will say which owner registered it, under which policy version it acted, whether its
 passport had expired, and exactly which rule it fired on the way. We still will not have a kill
 switch — but the incident report is going to be immaculate. 🤖</i></sub>
