@@ -335,7 +335,18 @@ autores angostó el protocolo sin decirlo.
     tiene que ser estructural: la columna se borra (0011) y el campo sale del struct, para que
     la lectura vieja sea un error de compilación y no un número equivocado.
 
-46. **Dos lectores de la misma regla son dos respuestas.** La traducción de "attestor guardado"
+46. **Un mockup de pantalla en la doc es una afirmación en presente.** Dibujé cuatro pantallas
+    para el README y **dos estaban inventadas**: un panel de pasaporte en la ficha de agente, que
+    no existe, y cuatro chequeos verdes en la página de verificación, que muestra uno. Nadie las
+    iba a desmentir — se ven bien. La regla de no afirmar en presente lo que no existe aplica
+    igual a un dibujo ASCII que a una frase. Si la pantalla existe, capturala (`make screenshots`);
+    si lo que querés mostrar es un documento, mostralo como documento.
+
+47. **Una captura hecha a mano envejece en silencio.** La página cambia, la imagen no, y el README
+    sigue mostrando un producto que ya no existe. Por eso `tools/screenshots.sh` las regenera
+    desde un stack corriendo: la única forma de enterarse es volver a sacarlas.
+
+48. **Dos lectores de la misma regla son dos respuestas.** La traducción de "attestor guardado"
     a "dimensión de runtime" vivía privada en `internal/api`, así que cualquier otro lector —un
     CLI de operador, un reporte— tenía que reimplementar que `self-declared` no vale nada. Vive
     en `pkg/assurance.FromEvidence`, junto a la tabla que le da sentido.

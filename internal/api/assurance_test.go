@@ -100,3 +100,35 @@ func TestAgentsTableHasNoAssuranceColumn(t *testing.T) {
 			"for its whole life it held the registration-time default.")
 	}
 }
+
+// TestIdentityCardCarriesTheChainAnchor covers a field OpenAPI declares on this
+// response and the implementation did not send.
+//
+// It is not cosmetic. The card is what a relying party reads about an identity,
+// and genesis_event_hash is the only thing on it that closes the walk backwards:
+// the first attestation names it as previous_event_hash, so without it a
+// verifier holding an action can reach its predecessors and then stop, with no
+// way to tell whether it arrived at registration or at a truncation.
+func TestIdentityCardCarriesTheChainAnchor(t *testing.T) {
+	e := setup(t)
+	var card struct {
+		Genesis            string `json:"genesis_event_hash"`
+		IdentityCommitment string `json:"identity_commitment"`
+	}
+	if code := e.getJSON(t, "/v1/agents/"+e.agent.UAIID, &card); code != http.StatusOK {
+		t.Fatalf("identity card: %d", code)
+	}
+	if card.Genesis == "" {
+		t.Fatal("the identity card does not carry genesis_event_hash, which OpenAPI " +
+			"declares on this response and a verifier needs to reach registration")
+	}
+	if card.Genesis != e.agent.GenesisEventHash {
+		t.Fatalf("genesis_event_hash = %q, want %q", card.Genesis, e.agent.GenesisEventHash)
+	}
+	// Distinct values with the same shape. Reporting one where the other belongs
+	// would look right in a screenshot and break every chain walk.
+	if card.Genesis == card.IdentityCommitment {
+		t.Fatal("genesis_event_hash and identity_commitment are the same value: " +
+			"one anchors the event chain, the other commits to the identity record")
+	}
+}

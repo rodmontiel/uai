@@ -652,6 +652,10 @@ integration: ## Run store integration tests against a throwaway PostgreSQL
 	@set -e; trap '$(CONTAINER) rm -f uai-pg-test >/dev/null 2>&1 || true' EXIT; \
 		./test/invariants/run.sh $(CONTAINER) exec -i uai-pg-test psql -U uai -d uai
 
+.PHONY: screenshots
+screenshots: ## Regenerate the README screenshots from a running stack: make screenshots AGENT=uai:agent:01M3…
+	@./tools/screenshots.sh "$(AGENT)"
+
 .PHONY: invariants
 invariants: ## Assert that the forbidden operations fail (INV-001..010)
 	@./test/invariants/run.sh psql "$(PG_DSN)"

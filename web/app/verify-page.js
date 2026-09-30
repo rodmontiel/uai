@@ -58,7 +58,16 @@ function renderVerdict(id, v) {
       field('Identity', h('span', { class: 'mono' }, id)),
       field('Status', pill(v.status, TONE[v.status] || 'neutral')),
       field('As of', when(v.as_of)),
-      v.assurance_level ? field('Assurance', v.assurance_level) : null,
+      // The level AND why it is not higher. The API sends both; showing only the
+      // level leaves a bare "UAI-AL0", which is indistinguishable from a
+      // misconfiguration and tells a reader nothing about what would change it.
+      v.assurance_level
+        ? field('Assurance', v.assurance_limited_by
+          ? h('span', {}, v.assurance_level,
+            h('span', { class: 'muted' }, ` — limited by ${v.assurance_limited_by}`),
+            v.assurance_detail ? h('div', { class: 'muted' }, v.assurance_detail) : null)
+          : v.assurance_level)
+        : null,
       v.policy_version ? field('Policy', v.policy_version) : null,
     ));
   if (v.note) panel.append(h('p', { class: 'note' }, v.note));

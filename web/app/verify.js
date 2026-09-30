@@ -231,11 +231,27 @@ export function checkChain(events, genesisHash) {
     checks.push({ name: 'The chain starts at registration', ok: null, detail: 'no events yet' });
     return checks;
   }
+  // Without the anchor there is nothing to compare the FIRST event against, and
+  // the walk therefore never reaches registration. Reporting success here would
+  // be a verifier failing open: the history could begin anywhere -- or name a
+  // predecessor that does not exist -- and this check would still have said
+  // "unbroken back to registration", which is the one sentence it would not
+  // have established. It is a refusal to conclude, not a verdict about the
+  // chain, and the detail says which.
+  if (!genesisHash) {
+    checks.push({
+      name: 'Every event links to the one before it',
+      ok: false,
+      detail: 'no genesis hash: the first event cannot be tied to registration, '
+        + 'so this history could begin anywhere',
+    });
+    return checks;
+  }
   let expected = genesisHash;
   let broken = null;
   for (const ev of events) {
     const prev = ev.previous_event_hash || '';
-    if (expected && prev !== expected) { broken = { at: ev.sequence, prev, expected }; break; }
+    if (prev !== expected) { broken = { at: ev.sequence, prev, expected }; break; }
     expected = ev.event_hash;
   }
   checks.push({

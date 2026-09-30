@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 
 import {
   leafHash, rootFromInclusionProof, canonicalize, checkpointBody, hexToBytes, bytesToHex,
-  checkReceipt,
+  checkReceipt, checkChain,
 } from '../../web/app/verify.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -143,4 +143,51 @@ test('INV-001: a statement that is not the one the receipt covers verifies nothi
   assert.equal(checks[0].ok, false, 'a substituted statement was accepted');
   assert.equal(checks.length, 1,
     'verification continued past a failed binding; nothing after it means anything');
+});
+
+// ── the chain walk ──────────────────────────────────────────────────────────
+
+const H = (c) => 'sha256:' + c.repeat(64);
+
+test('a chain with no anchor is not reported as reaching registration', () => {
+  // The page passed agent.genesis_event_hash, and the API did not send it, so
+  // this ran with undefined for the whole life of the feature. The first event
+  // was compared against nothing and the check still said "unbroken back to
+  // registration" -- a verifier concluding what it had not established.
+  const events = [
+    { sequence: 1, previous_event_hash: H('9'), event_hash: H('b') },
+    { sequence: 2, previous_event_hash: H('b'), event_hash: H('c') },
+  ];
+  const [check] = checkChain(events, undefined);
+  assert.equal(check.ok, false,
+    'a walk with no anchor must not be reported as successful');
+  assert.match(check.detail, /genesis/,
+    'the refusal has to say what is missing, not just fail');
+});
+
+test('the first event must link to registration, not merely to something', () => {
+  const events = [
+    // Names a predecessor that is not this identity's genesis: a history
+    // grafted onto an anchor nobody can produce.
+    { sequence: 1, previous_event_hash: H('9'), event_hash: H('b') },
+    { sequence: 2, previous_event_hash: H('b'), event_hash: H('c') },
+  ];
+  const [check] = checkChain(events, H('a'));
+  assert.equal(check.ok, false);
+  assert.match(check.detail, /sequence 1/);
+});
+
+test('an unbroken chain from registration verifies', () => {
+  const events = [
+    { sequence: 1, previous_event_hash: H('a'), event_hash: H('b') },
+    { sequence: 2, previous_event_hash: H('b'), event_hash: H('c') },
+  ];
+  const [check] = checkChain(events, H('a'));
+  assert.equal(check.ok, true, check.detail);
+  assert.match(check.detail, /unbroken back to registration/);
+});
+
+test('no events is neither a pass nor a failure', () => {
+  const [check] = checkChain([], H('a'));
+  assert.equal(check.ok, null, 'an identity that has done nothing has not failed anything');
 });

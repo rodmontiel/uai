@@ -6,6 +6,14 @@
 > open protocol, reference implementation, and a path to a federated network of
 > independently operated registries.
 
+![The identity card of a registered agent: identifier, DID, status, assurance level with the
+reason it is not higher, the anchor of its event chain, and the credentials issued with
+it](docs/img/agent-passport.png)
+
+<sub>A real agent in a running stack, captured by `make screenshots`. Every value comes from the
+API — including `UAI-AL0 — how strongly the identity was established, not how safe the agent
+is`, which is the sentence this project exists to keep saying.</sub>
+
 ---
 
 ## Mission
@@ -92,145 +100,158 @@ agent to request its own.
 
 ## The screens
 
-Seven pages, one origin, a strict CSP, no build step and no external JavaScript. Values below are
-from a real run of `make demo` and the walkthrough in
-[`docs/Ejemplo_Practico_es.md`](docs/Ejemplo_Practico_es.md).
+Seven pages, one origin, a strict CSP, no build step and no external JavaScript.
+
+The image at the top of this page is captured from a running stack by `make screenshots`, not
+pasted by hand — a screenshot taken once goes stale silently, and a README showing a product that
+no longer exists is a small lie that compounds. The panels below are sketched from the real page
+code and real example documents in [`spec/schemas/examples/`](spec/schemas/examples/); where a
+panel is a document rather than a page in `web/`, it says so.
 
 ### 1 · Identification — who is this, and how sure are we?
 
-`http://localhost:8081/verify.html` is the only screen in the system you are **not** asked to
-trust. It does not render our verdict: the code that checks the signatures runs in your browser,
-has no dependencies, and can be read in a few hundred lines.
+The card above is the answer to *who is this*. `verify.html` is the answer to *and should I
+believe it* — the only screen in the system you are **not** asked to trust. It does not render our
+verdict: the code that checks the signatures runs in your browser, has no dependencies, and can be
+read in a few hundred lines. The page keeps the two halves apart and says so: *"this panel is the
+registry's answer. The checks below are performed in your browser."*
+
+Two things on it are the whole product argument.
+
+**The assurance level says why it is not higher.** A bare `UAI-AL0` is indistinguishable from a
+misconfiguration, so the registry reports the level *and* the dimension holding it down:
 
 ```
-┌─ Verify — UAI ───────────────────────────────────────────────────────────────┐
-│                                                                              │
-│  Verify an identity                                                          │
-│  ┌────────────────────────────────────────────────────┐ ┌────────┐           │
-│  │ uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB               │ │ Verify │           │
-│  └────────────────────────────────────────────────────┘ └────────┘           │
-│                                                                              │
-│  What the registry reports                                                   │
-│    Identity    uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                          │
-│    Status      UAI_VERIFIED              ● not revoked · not quarantined     │
-│    Assurance   UAI-AL0                                                       │
-│                ⓘ limited by owner verification — the owner is self-asserted;  │
-│                  nothing has demonstrated control of its DID                 │
-│    Policy      GASC-2027.4                                                   │
-│    As of       2026-09-30T15:17:09Z            cache 60s                     │
-│                                                                              │
-│  Checked in your browser                                                     │
-│    ✓ DID document resolves 1 verification method, with validity windows      │
-│    ✓ Chain links unbroken — 2 events, each naming its predecessor            │
-│    ✓ Checkpoint signed by the log key, co-signed by 2 of 2 witnesses         │
-│    ✓ Attestation signatures verify against the key valid at signing time     │
-│                                                                              │
-│  This says the record is internally consistent and signed by the keys it      │
-│  names — not that the actions described in it had the effects they claim.     │
-│                                                                              │
-│                                              Open the full timeline →         │
-└──────────────────────────────────────────────────────────────────────────────┘
+Assurance   UAI-AL0 — limited by runtime attestation
+            no attested runtime; a binding the agent described itself is not attestation
 ```
 
-**The assurance line is the product decision worth defending.** A bare `UAI-AL0` is
-indistinguishable from a misconfiguration. UAI derives the level from evidence on every read —
-key protection, owner verification, runtime attestation, and the level is the **minimum** of the
-three — and then says which dimension is the ceiling, so the reader knows what would have to
-change.
+The level is derived from evidence on every read — key protection, owner verification, runtime
+attestation — and it is the **minimum** of the three. It is never stored: a saved copy would be a
+cache with no invalidation path, and the evidence moves when a key rotates, a binding expires or
+an owner is verified.
+
+**And the chain check refuses to conclude.** An identity that has attested nothing gets
+`not checked — no events yet` rather than a green tick, and one whose history cannot be tied back
+to registration is reported as **failed**, not as passed-with-nothing-to-check. A verifier that
+reported success for a walk it did not perform would be worse than no verifier at all.
 
 ### 2 · The AI Passport — where it may act, and until when
 
-```
-┌─ Agent — UAI ────────────────────────────────────────────────────────────────┐
-│  MiPrimerAgente                                      ● ACTIVE   UAI-AL0      │
-│                                                                              │
-│  UAI-ID        uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                          │
-│  DID           did:uai:agent:01M3QA6KA9XGD0KHBEJD1ZMNHB                      │
-│  Type          autonomous_task_agent          Version      1.0.0             │
-│  Jurisdiction  AR                             Registered   2026-09-29        │
-│  Policy        GASC-2027.4                    Genesis      sha256:5aec492c…   │
-│                                                                              │
-│  ── Passport  urn:uai:passport:01JY8RB1Q4X7N2M8V0K3T5S9WE ──────── VALID ──   │
-│                                                                              │
-│   Allowed        AR · BR · DE · ES                                           │
-│   Restricted     KP · IR                                                     │
-│   Valid          2026-09-22  →  2027-03-21                                   │
-│                                                                              │
-│   Authorized capabilities            floor        constraints                │
-│     cloud.securitygroup.update       UAI-AL3      max 20 actions/hour        │
-│     crm.customer.read                UAI-AL2                                 │
-│                                                                              │
-│   Decision   01JY8RA3C0…   under GASC-2027.4 · sha256:aaaaaaaa…              │
-│                                                                              │
-│  A passport scopes WHERE a granted capability may be used. It cannot grant    │
-│  one. Each capability still carries its own assurance floor.                  │
-└──────────────────────────────────────────────────────────────────────────────┘
+The passport is not a screen: it is a **signed credential** the holder can hand to a counterparty,
+who validates it without calling us. This is a real one from
+[`spec/schemas/examples/`](spec/schemas/examples/agent-passport-credential/valid/cross-border-passport.json):
+
+```json
+{
+  "type": ["VerifiableCredential", "AgentPassportCredential"],
+  "id": "urn:uai:passport:01JY8RB1Q4X7N2M8V0K3T5S9WE",
+  "validFrom": "2026-09-22T00:00:00Z",
+  "validUntil": "2027-03-21T00:00:00Z",
+  "credentialSubject": {
+    "id": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+    "owner": "did:uai:owner:01JY8R9ZB00000000000000000",
+    "allowedJurisdictions": ["AR", "BR", "DE", "ES"],
+    "restrictedJurisdictions": ["KP", "IR"],
+    "authorizedCapabilities": [
+      { "capability": "cloud.securitygroup.update", "minAssurance": "UAI-AL3",
+        "constraints": { "max_actions_per_hour": 20 } },
+      { "capability": "crm.customer.read", "minAssurance": "UAI-AL2" }
+    ],
+    "assuranceLevel": "UAI-AL3",
+    "policyVersion": "GASC-2027.4",
+    "state": "VALID"
+  },
+  "proof": { "type": "DataIntegrityProof", "domain": "UAI-v1:credential", "…": "…" }
+}
 ```
 
-Note the floors: this passport lists `cloud.securitygroup.update` at **UAI-AL3** while the identity
-is at **UAI-AL0**. Holding the passport changes nothing about that — the guardrail refuses the
-action, and the refusal names the rule that fired. A document that authorized something the
-guardrail would deny is a document that tells an operator they are covered when they are not.
+Note the floors. `cloud.securitygroup.update` requires **UAI-AL3**; holding this passport changes
+nothing about whether the identity reaches it. If it does not, the guardrail refuses the action
+with `assurance_below_floor` and names the rule that fired. A document that authorized something
+the guardrail would deny is a document telling an operator they are covered when they are not.
+
+And `validUntil` is not decoration: a passport expires, and an expired one authorizes nothing.
+That is why it is safe for an agent to request its own — the worst case of a fraudulent passport
+is **narrower** scope, never wider.
 
 ### 3 · The event chain — what it did, in order, with no gaps
 
 Every action is a signed record naming the previous one. You cannot insert one, and you cannot
-remove one without the numbering failing to close.
+remove one without the numbering failing to close. `explorer.html` walks that chain:
 
 ```
-┌─ Explorer — UAI ─────────────────────────────────────────────────────────────┐
-│  Action explorer                                                             │
-│                                                                              │
-│  Identity   uai:agent:01JY8R9ZAF392N7QX2T81JH6KM       ● ACTIVE              │
-│  Genesis    sha256:aaaaaaaa…                                                 │
-│                                                                              │
-│  #    Action                          Outcome              Asserted at       │
-│  ───────────────────────────────────────────────────────────────────────     │
-│  418  infrastructure.modify           SUCCESS              14:02:04.117Z     │
-│       cloud.securitygroup.update      risk CRITICAL                          │
-│       purpose  incident_remediation                                          │
-│       where    AR → DE   cross-border, basis: resource_location              │
-│       policy   GASC-2027.4 · ALLOW_WITH_MONITORING                           │
-│               rules fired: gasc.infra.cross_border_change                    │
-│       passport required · VALID at decision time                             │
-│       links to sha256:aaaaaaaa…                                              │
-│                                                                              │
-│  417  crm.customer.read               ABORTED_BY_POLICY    13:58:41.002Z     │
-│       policy   GASC-2027.4 · DENY   assurance_below_floor                    │
-│               rules fired: gasc.capability.assurance_floor                   │
-│       links to sha256:99c1e70b…                                              │
-│                                                                              │
-│  Inputs and outputs are salted commitments. The text never leaves the agent;  │
-│  the salts stay with its owner, who decides who may open them and when.       │
-└──────────────────────────────────────────────────────────────────────────────┘
+Action explorer
+  Identity  uai:agent:01JY8R9ZAF392N7QX2T81JH6KM      ● ACTIVE
+  Genesis   sha256:f2d8c41d…32718f
+
+  418 attested action(s)
+  #     ACTION                   OUTCOME              LINKS TO       EVENT          ASSERTED AT
+  ────────────────────────────────────────────────────────────────────────────────────────────
+  418   infrastructure.modify    SUCCESS              aaaaaaaa…aa    3f91c02b…7d    14:02:04Z
+  417   crm.customer.read        ABORTED_BY_POLICY    99c1e70b…13    aaaaaaaa…aa    13:58:41Z
 ```
 
-Failures are attested too. An accountability record containing only successes is an
-advertisement, so `FAILURE`, `PARTIAL` and `ABORTED_BY_POLICY` are first-class outcomes and the
-SDK attests a thrown exception before re-throwing it.
+An identity that has attested nothing gets a sentence rather than an empty table: *"That is not
+evidence that it did nothing: an actor that never submits an event leaves no trace, which is a
+limit this system states rather than hides."*
+
+Each row is a signed document. This is a real one from
+[`spec/schemas/examples/`](spec/schemas/examples/action-attestation/valid/):
+
+```json
+{
+  "event_id": "01JY8RA3C7K2V9M0QW4T6Z8XPD",
+  "agent_did": "did:uai:agent:01JY8R9ZAF392N7QX2T81JH6KM",
+  "runtime_identity": "spiffe://uai.world/agents/01JY8R9ZAF392N7QX2T81JH6KM/i/7f6a92",
+  "action": { "type": "infrastructure.modify", "capability": "cloud.securitygroup.update",
+              "resource": "urn:cloud:aws:eu-central-1:sg-0a1b2c3d", "risk_class": "CRITICAL" },
+  "purpose": "incident_remediation",
+  "jurisdiction": { "origin": "AR", "targets": ["DE"], "cross_border": true,
+                    "basis": "resource_location" },
+  "policy": { "version": "GASC-2027.4", "decision": "ALLOW_WITH_MONITORING",
+              "decision_id": "01JY8RA3C0…", "rules_fired": ["gasc.infra.cross_border_change"] },
+  "passport": { "required": true, "status_at_decision": "VALID", "credential_hash": "sha256:bb…" },
+  "input_commitment": "sha256:aaaa…", "output_commitment": "sha256:bbbb…",
+  "outcome": "SUCCESS",
+  "previous_event_hash": "sha256:aaaa…", "sequence": 418,
+  "signature": { "domain": "UAI-v1:attestation", "…": "…" }
+}
+```
+
+Three things this record does that a log line cannot: it names **the exact policy version and the
+rules that fired**, so the decision can be re-evaluated years later; it records **the passport's
+state at decision time**, so that survives the passport's later expiry; and inputs and outputs
+appear only as **salted commitments** — the text never leaves the agent, and the salts stay with
+its owner, who decides who may open them and when.
+
+Failures are attested too. `FAILURE`, `PARTIAL` and `ABORTED_BY_POLICY` are first-class outcomes,
+and the SDK attests a thrown exception before re-throwing it. An accountability record containing
+only successes is an advertisement.
 
 ### 4 · Governance — revoking an identity takes people, not an administrator
 
 ```
-┌─ Governance — UAI ───────────────────────────────────────────────────────────┐
-│  Proposal   REVOKE  uai:agent:01JY8R9ZAF392N7QX2T81JH6KM                     │
-│  Subject    repeated cross-border transfers after a passport lapsed          │
-│                                                                              │
-│  Threshold  4-of-5, from at least 3 independent jurisdictions                │
-│  Yes / No   4 / 1                                       Closes  in 19h       │
-│  Countries  AR · DE · JP · US                                                │
-│                                                                              │
-│  How a vote is cast                                                          │
-│    Each vote is a WebAuthn assertion with user verification — a human, on a   │
-│    hardware key, present at that moment. An automated process cannot cast     │
-│    one, and the database refuses it if it tries.                             │
-│                                                                              │
-│  Every vote is permanently attributed. There is no anonymous governance here. │
-└──────────────────────────────────────────────────────────────────────────────┘
+Governance
+  PROPOSAL          SUBJECT                     KIND      STATE   THRESHOLD   YES/NO   COUNTRIES   CLOSES
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────
+  01JY8RC4D2…       uai:agent:01JY8R9ZAF…       REVOKE    OPEN    4-of-5      4 / 1    4           in 19h
+
+  How a vote is cast
+    Each vote is a WebAuthn assertion with user verification: a human, on a hardware key,
+    present at that moment. The challenge the key signs IS the digest of the vote, so an
+    automated process cannot cast one — it may hold the delegate's credential and still not
+    produce a valid vote. The registry refuses it with UAI_VOTE_NOT_USER_VERIFIED.
 ```
 
-An administrator may *submit* a revocation. An administrator may never *decide* one. The
-separation is enforced in the schema, not in a code review.
+`COUNTRIES` is not decoration: the quorum must be drawn from at least three jurisdictions, which
+is what stops a single government — or one operator holding several delegates — from revoking
+alone. Every vote is permanently attributed; there is no anonymous governance here.
+
+An administrator may *submit* a revocation. An administrator may never *decide* one:
+`UAIRevocationRegistry.executeRevocation` re-verifies the delegate signatures and reads the
+quorum from the policy registry, so a compromise of the application layer — or of the admin
+account itself — cannot produce a revocation the contract accepts.
 
 ---
 
@@ -340,12 +361,12 @@ what runs today.
 │    Protocol            0.1                                                   │
 │                                                                              │
 │  Peers                                                                       │
-│    UAI-AS   REGISTRY DID                 STATUS    ENDPOINT                  │
-│    2001     did:uai-registry:2001        ACTIVE    https://partner.example   │
+│    UAI-AS  REGISTRY DID            STATUS   ENDPOINT               LAST SEEN │
+│    2001    did:uai-registry:2001   ACTIVE   https://partner.exam…  16:49Z    │
 │                                                                              │
 │  Federated identities                                                        │
-│    AGENT DID                         ORIGIN   STATUS       SIGNATURE         │
-│    did:uai:2001:agent:01M3SGKV0D…    AS2001   REGISTERED   VERIFIED          │
+│    AGENT DID                      ORIGIN  REMOTE STATUS  SIGNATURE  SEQ      │
+│    did:uai:2001:agent:01M3SGKV0D… AS2001  REGISTERED     VERIFIED   1042     │
 │                                                                              │
 │    These belong to other registries. None of them is an agent of this one.   │
 └──────────────────────────────────────────────────────────────────────────────┘

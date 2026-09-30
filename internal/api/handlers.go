@@ -349,8 +349,14 @@ func identityCard(a store.Agent, al assurance.Result) map[string]any {
 		"assurance_level":      al.Level.String(),
 		"primary_jurisdiction": a.PrimaryJurisdiction,
 		"identity_commitment":  a.IdentityCommitment,
-		"policy_version":       a.PolicyVersion,
-		"registered_at":        a.RegisteredAt.UTC().Format(time.RFC3339),
+		// The anchor of the event chain, which OpenAPI declares on this response
+		// and the implementation did not send. Without it a verifier reading the
+		// card has no way back: the first attestation names this hash as its
+		// previous_event_hash, so it is what closes the walk from any action to
+		// registration. The agent page asked for it and rendered an em dash.
+		"genesis_event_hash": a.GenesisEventHash,
+		"policy_version":     a.PolicyVersion,
+		"registered_at":      a.RegisteredAt.UTC().Format(time.RFC3339),
 	}
 	if a.Vendor != "" {
 		card["vendor"] = a.Vendor

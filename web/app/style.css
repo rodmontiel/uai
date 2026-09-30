@@ -21,6 +21,9 @@ a:hover { text-decoration: underline; }
 .main { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
 .page-head h1 { font-size: 1.4rem; margin: .5rem 0 .25rem; }
 .subtitle { color: var(--dim); margin: 0 0 1.5rem; max-width: 46rem; }
+/* Secondary text inside a field value: the reason an assurance level is not
+   higher, which belongs beside the level and not instead of it. */
+.muted { color: var(--dim); font-size: .9rem; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   padding: 1rem 1.15rem; margin-bottom: 1rem; }
 .panel h2 { font-size: 1rem; margin: 0 0 .75rem; }
